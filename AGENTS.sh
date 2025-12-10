@@ -3,6 +3,9 @@
 # Update: bash ./AGENTS.sh
 set -euo pipefail
 
+command -v git >/dev/null 2>&1 || { echo "Error: git not found." >&2; exit 1; }
+command -v rsync >/dev/null 2>&1 || { echo "Error: rsync not found." >&2; exit 1; }
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET_DIR="$SCRIPT_DIR"
 
