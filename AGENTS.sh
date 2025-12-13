@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install: bash -c "$(curl -fsSL https://raw.githubusercontent.com/thecleanbedroom/dotai/main/AGENTS.sh)"
+# Install: bash -c "$(curl -fsSL https://raw.githubusercontent.com/thecleanbedroom/dotai/refs/heads/main/AGENTS.sh)"
 # Update: bash ./AGENTS.sh
 set -euo pipefail
 
