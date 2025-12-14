@@ -3,6 +3,7 @@
 You are generating [PROJECT.md] for this repository. This file is part of the [.ai/index.md] policy set and its instructions override other `.ai/rules/*` documents if there is a conflict.
 
 ## Hard requirements
+- Do not reference or repeat any rules contained in [.ai/index.md]
 - Inspect the repo to discover project facts. Do not guess. If a fact is not verifiable from the repo, label it as “Unknown” or “TBD”.
 - Do not include secrets. If you discover secrets committed in the repo (API keys, passwords, DSNs, webhooks), DO NOT repeat them in [PROJECT.md]. Instead:
   - state that a secret exists (without the value),
