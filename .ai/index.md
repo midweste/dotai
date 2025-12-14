@@ -19,3 +19,11 @@ Any AI orchestrator or extension must load and obey **every** document reference
 
 - /.ai/rules/platform-wordpress.md – WordPress-specific instructions shared across projects.
 - /.ai/rules/platform-node.md – Node.js runtime, security, and deployment expectations.
+
+## Quality Assurance 
+
+- /.ai/rules/quality-assurance.md - Rules for preparing project code for production.
+
+## Project
+
+- /PROJECT.md - Project specific ruleset and information.  These instructions would override any previous conflicting instructions.
