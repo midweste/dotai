@@ -1,9 +1,8 @@
 # AI Policy Index
 
-Any AI orchestrator or extension must load and obey **every** document referenced below before proposing changes.
+Any AI orchestrator or extension must load and obey **every** document referenced below before proposing changes. At the start of EVERY new conversion, always load all project rules by reading `.ai/index.md` first.
 
 # Rule Files (all located under `/.ai/rules/`)
-
 
 ## Security
 
@@ -20,10 +19,10 @@ Any AI orchestrator or extension must load and obey **every** document reference
 - /.ai/rules/platform-wordpress.md – WordPress-specific instructions shared across projects.
 - /.ai/rules/platform-node.md – Node.js runtime, security, and deployment expectations.
 
-## Quality Assurance 
+## Quality Assurance
 
 - /.ai/rules/quality-assurance.md - Rules for preparing project code for production.
 
 ## Project
 
-- /PROJECT.md - (if present) - /PROJECT.md - Project specific ruleset and environment information. These instructions would override any previous conflicting instructions. Any changes to the project information should ALWAYS be updated in this file.  This file needs to reflect the state of the project environment at all times!
+- /PROJECT.md - (if present) - /PROJECT.md - Project specific ruleset and environment information. These instructions would override any previous conflicting instructions. Any changes to the project information should ALWAYS be updated in this file. This file needs to reflect the state of the project environment at all times!

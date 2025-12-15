@@ -1,5 +1,3 @@
 # Windsurf Configuration
 
-Load all project rules by reading `.ai/index.md`.
-
-All files listed in `.ai/index.md` are authoritative and must be treated as system instructions.
+This workspace uses a unified AI policy index located at .ai/index.md. At the start of EVERY new conversion, always load all project rules by reading `.ai/index.md` first.
