@@ -21,4 +21,5 @@
 - Maintain fast feedback: parallelize or split slow suites; quarantine flaky tests and fix them promptly.
 - When refactoring without new behavior, keep tests green and prefer improving existing coverage over adding redundant cases.
 - Always fix obvious bugs and improve code clarity/safety surfaced by tests; do not ship tests that merely lock in poor behavior.
+- Prioritize coverage of critical execution paths first (core happy paths, error handling, security-sensitive flows); expand outward to secondary cases after the backbone is covered.
 - Coverage expectations: target ~80% line coverage overall, require ~100% coverage on new or changed code, and 100% of branches/lines in security-critical flows (auth, permissions, payments). Don't chase coverage at the expense of meaningful assertions.
