@@ -1,5 +1,9 @@
 # Quality Assurance
 
+## Scope
+
+- ONLY act on code that exist in .gitmodules
+
 ## Initiation
 
 - Apply this checklist only when explicitly asked to "prepare for production" or "review for production."
