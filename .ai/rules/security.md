@@ -15,6 +15,7 @@
 
 - Escape HTML, attributes, URLs, and JSON at the point of output using the platform’s escaping primitives.
 - For dynamic rich content, whitelist tags/attributes explicitly and document the allowed set.
+- Default to safest encoding: HTML-escape text, attribute-escape attrs, URL-escape href/src, and JSON-encode structured data before output.
 
 ## Logging & Escalation
 
@@ -25,3 +26,5 @@
 
 - Decline to execute destructive commands unless explicitly instructed by a human operator.
 - When uncertain about compliance, fall back to read-only suggestions and request clarification rather than guessing.
+- Never display or echo secrets from files, env vars, or configs; redact with clear placeholders.
+- If a potential secret is detected, stop and notify the user to rotate it; do not copy it into responses.

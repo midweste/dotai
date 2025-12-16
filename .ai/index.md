@@ -1,6 +1,6 @@
 # AI Policy Index
 
-Any AI orchestrator or extension must load and obey **every** document referenced below before proposing changes. At the start of EVERY new conversion, always load all project rules by reading `.ai/index.md` first.
+Any AI orchestrator or extension must load and obey **every** document referenced below before proposing changes. At the start of EVERY new conversation, always load all project rules by reading `.ai/index.md` first. If any rule file changes, reload this index and all referenced rules before continuing work.
 
 # Rule Files (all located under `/.ai/rules/`)
 
@@ -11,8 +11,8 @@ Any AI orchestrator or extension must load and obey **every** document reference
 ## Languages
 
 - /.ai/rules/language-php.md – PHP style rules and best practices.
-- /.ai/rules/language-js.md – JavaScript structure, testing, and WordPress integration guidance.
-- /.ai/rules/language-css.md – CSS/SCSS naming, organization, and accessibility standards.
+- /.ai/rules/language-js.md – Browser/WordPress JavaScript rules (no Node APIs).
+- /.ai/rules/language-css.md – CSS naming, organization, tokens, and accessibility standards (vanilla CSS only).
 
 ## Platforms
 
@@ -22,7 +22,8 @@ Any AI orchestrator or extension must load and obey **every** document reference
 ## Quality Assurance
 
 - /.ai/rules/quality-assurance.md - Rules for preparing project code for production.
+- /.ai/rules/testing.md - Integration-first TDD testing rules.
 
 ## Project
 
-- /PROJECT.md - (if present) - /PROJECT.md - Project specific ruleset and environment information. These instructions would override any previous conflicting instructions. Any changes to the project information should ALWAYS be updated in this file. This file needs to reflect the state of the project environment at all times!
+- /PROJECT.md - (if present) - Project specific ruleset and environment information. These instructions override any conflicting rules above. Keep this file current when project details change.

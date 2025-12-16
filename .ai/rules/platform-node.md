@@ -28,3 +28,20 @@
 
 - Use structured logging (`JSON.stringify` or libraries like Pino) for services; redact sensitive fields.
 - Surface unhandled promise rejections via process hooks and fail fast rather than ignoring errors.
+
+## Language & Patterns
+
+- Prefer ES modules in Node 20; avoid mixing CommonJS and ESM. Use `.cjs` only when interoperability is unavoidable.
+- Use `async/await` over callbacks or raw `.then`; ensure every promise is awaited or intentionally fire-and-forget with error handling.
+- Default to `const`/`let`; never use `var`. Keep functions pure where possible; isolate side effects at the edges.
+- Normalize error handling with typed/domain errors mapped to HTTP responses; never leak stack traces in responses.
+- Validate all external input (requests, env/config, file reads) at boundaries; treat `process.env` access as untrusted and schema-validate once at startup.
+- Keep time and randomness injectable for testability (e.g., pass clocks/UUID generators).
+
+## Code Structure
+
+- Organize by feature or layer: HTTP handlers/controllers → services/use-cases → repositories/adapters; keep domain logic out of transport layers.
+- Keep configuration centralized (single `config` module) instead of scattered `process.env` reads; provide defaults and fail fast on missing requirements.
+- Encapsulate data access in repositories; do not perform raw queries or driver calls in controllers/handlers.
+- Keep shared utilities framework-agnostic; avoid hidden singletons—prefer dependency injection or explicit parameter passing.
+- Co-locate tests with the code they cover (`*.test.js/ts`) and mirror the feature structure for clarity.
