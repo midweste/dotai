@@ -1,1 +1,5 @@
-All AI tools/plugins must load and obey `.ai/index.md` at the start of every session (and after any rule change); if it can’t be loaded, stop and ask before acting.
+---
+description: "AI Policy: Load .ai/index.md for all project rules and coding standards"
+---
+
+All AI tools/plugins must load and obey `.ai/index.md` at the start of every session (and after any rule change); if it can't be loaded, stop and ask before acting.
