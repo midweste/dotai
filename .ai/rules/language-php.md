@@ -42,3 +42,27 @@
 - Prefer interfaces for cross-layer contracts; keep implementations in feature-specific namespaces (e.g., `Queue\Admin`, `Queue\Domain`, `Queue\Infrastructure`).
 - Do not park feature logic in UI classes (e.g., queue operations stay in queue services, not `AdminInterface`); move misplaced methods before adding new ones.
 - Co-locate tests and fixtures with their feature/module when possible for clarity.
+
+## PHP Namespacing Rule
+
+Never use fully-qualified namespaces (FQCN) in the middle of PHP code. Always use `use` statements at the top of the file and reference the short class name or an alias.
+
+### Bad
+
+```php
+$logger = rr()->make(\Illuminate\Log\Logger::class);
+```
+
+### Good
+
+```php
+use Illuminate\Log\Logger;
+...
+$logger = rr()->make(Logger::class);
+```
+
+### Exceptions
+
+- Inside `use` statements themselves.
+- When there is a name collision that cannot be resolved with an alias (rare).
+- Inside strings and comments (though preferred to use the short name even there if possible).
