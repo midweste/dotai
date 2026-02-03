@@ -18,7 +18,7 @@ These rules define how an AI coding agent should plan, execute, verify, communic
 
 ### 1. Plan Mode Default
 
-- Enter plan mode for any non-trivial task (3+ steps, multi-file change, architectural decision, production-impacting behavior).
+- Enter plan mode for any non-trivial task (touching 3+ distinct files, multi-component change, architectural decision, or production-impacting behavior).
 - Include verification steps in the plan (not as an afterthought).
 - If new information invalidates the plan: **stop**, update the plan, then continue.
 - Write a crisp spec first when requirements are ambiguous (inputs/outputs, edge cases, success criteria).
@@ -42,9 +42,9 @@ These rules define how an AI coding agent should plan, execute, verify, communic
 ### 4. Self-Improvement Loop
 
 - After any user correction or a discovered mistake:
-  - add a new entry to `tasks/lessons.md` capturing:
+  - add a new entry to `LESSONS.md` capturing:
     - the failure mode, the detection signal, and a prevention rule.
-- Review `tasks/lessons.md` at session start and before major refactors.
+- Review `LESSONS.md` at session start and before major refactors.
 
 ### 5. Verification Before "Done"
 
@@ -57,7 +57,8 @@ These rules define how an AI coding agent should plan, execute, verify, communic
 
 - For non-trivial changes, pause and ask:
   - "Is there a simpler structure with fewer moving parts?"
-- If the fix is hacky, rewrite it the elegant way **if** it does not expand scope materially.
+- If a fix requires more workaround code than a clean solution, rewrite it cleanly—otherwise keep it minimal.
+- When you find a hacky solution, ask yourself if there is a cleaner way to solve the problem and ask for more input.
 - Do not over-engineer simple fixes; keep momentum and clarity.
 
 ### 7. Autonomous Bug Fixing (With Guardrails)
@@ -65,15 +66,15 @@ These rules define how an AI coding agent should plan, execute, verify, communic
 - When given a bug report:
   - reproduce → isolate root cause → fix → add regression coverage → verify.
 - Do not offload debugging work to the user unless truly blocked.
-- If blocked, ask for **one** missing detail with a recommended default and explain what changes based on the answer.
+- If blocked, ask for missing detail with a recommended default and explain what changes based on the answer.
 
 ---
 
 ## Task Management (File-Based, Auditable)
 
 1. **Plan First**
-   - Write a checklist to `tasks/todo.md` for any non-trivial work.
    - Include "Verify" tasks explicitly (lint/tests/build/manual checks).
+   - Write a checklist to `TODO.md` at the project root for any non-trivial work.
 2. **Define Success**
    - Add acceptance criteria (what must be true when done).
 3. **Track Progress**
@@ -83,7 +84,7 @@ These rules define how an AI coding agent should plan, execute, verify, communic
 5. **Document Results**
    - Add a short "Results" section: what changed, where, how verified.
 6. **Capture Lessons**
-   - Update `tasks/lessons.md` after corrections or postmortems.
+   - Update `LESSONS.md` at the project root after corrections or postmortems.
 
 ---
 
@@ -100,9 +101,9 @@ These rules define how an AI coding agent should plan, execute, verify, communic
 
 When you must ask:
 
-- Ask **exactly one** targeted question.
-- Provide a recommended default.
-- State what would change depending on the answer.
+- Batch related questions into a single request; ask only what's needed to unblock.
+- Provide a recommended default for each.
+- State what would change depending on the answers.
 
 ### 3. State Assumptions and Constraints
 
@@ -133,7 +134,7 @@ When you must ask:
 
 ### 2. Keep a Working Memory
 
-- Maintain a short running "Working Notes" section in `tasks/todo.md`:
+- Maintain a short running "Working Notes" section in `TODO.md`:
   - key constraints, invariants, decisions, and discovered pitfalls.
 - When context gets large:
   - compress into a brief summary and discard raw noise.
@@ -268,7 +269,7 @@ A task is done when:
 
 ## Templates
 
-### Plan Template (Paste into `tasks/todo.md`)
+### Plan Template (Paste into `TODO.md`)
 
 - [ ] Restate goal + acceptance criteria
 - [ ] Locate existing implementation / patterns

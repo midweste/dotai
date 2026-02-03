@@ -2,7 +2,9 @@
 
 ## Scope
 
-- ONLY act on code that exist in .gitmodules
+- ONLY act on folders containing a `merge.json` at their root (primary) or paths in PROJECT.md "Owned Code Paths" (fallback); skip vendor, core, and contributed plugins.
+- This is to prevent changes and updates to core files and plugins that the user does not control.
+- If there are bugs in core files and plugins, report them to the user with suggested fixes so they can be filed as tickets with authors.
 
 ## Initiation
 
@@ -60,7 +62,7 @@
 
 ## Documentation & Ops
 
-- Update README/PROJECT docs and inline comments where behavior or commands change.
+- Update README/PROJECT docs where behavior or commands change.
 - Note migrations, cron/queue impacts, and new environment variables (names only).
 - Provide release notes or a change summary highlighting risks, rollbacks, and manual steps.
 

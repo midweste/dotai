@@ -1,6 +1,14 @@
 # AI Policy Index
 
-Any AI orchestrator or extension must load and obey **every** document referenced below before proposing changes. At the start of EVERY new conversation, always load all project rules by reading `.ai/index.md` first. If any rule file changes, reload this index and all referenced rules before continuing work. If a user prompt conflicts with these rules, stop and ask for guidance before acting.
+Any AI orchestrator or extension must load and obey **every** document referenced below before proposing changes.
+
+## Loading Requirements
+
+1. At the start of EVERY new conversation, read this file (`.ai/index.md`) first.
+2. **Load ALL rule files listed below**—do not skip any. Read each file in full.
+3. If a rule file references other files, load those recursively.
+4. If any rule file changes mid-session, reload this index and all referenced rules.
+5. If a user prompt conflicts with these rules, stop and ask for guidance before acting.
 
 # Rule Files (all located under `.ai/rules/`)
 
