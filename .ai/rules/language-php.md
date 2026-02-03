@@ -66,3 +66,36 @@ $logger = rr()->make(Logger::class);
 - Inside `use` statements themselves.
 - When there is a name collision that cannot be resolved with an alias (rare).
 - Inside strings and comments (though preferred to use the short name even there if possible).
+
+## PHP Import & Aliasing Policy
+
+To maintain codebase searchability and consistency, follow these rules for PHP `use` statements:
+
+### 1. No Redundant Aliasing
+
+Never use [as](cci:1://file:///home/eric/websites/codecide/backbay/local/web/wp-content/plugins/wordpress-extras/plugins-woo/retailrocket/retailrocket/src/WooConnection.php:251:4-290:5) aliases (e.g., `use Namespace\Class as Alias;`) unless there is a direct name collision within the same file. Always prefer the original short class name.
+
+- **Bad**: `use Illuminate\Database\Capsule\Manager as DbCapsule;`
+- **Good**: `use Illuminate\Database\Capsule\Manager;`
+
+### 2. Mandatory Local Imports
+
+Avoid fully-qualified class names (FQCN) in the body of the code (e.g., `\Exception` or `\RetailRocket\Http\Client`). Always import the class at the top of the file.
+
+- **Bad**: `$client = new \RetailRocket\Http\Client();`
+- **Good**:
+  ```php
+  use RetailRocket\Http\Client;
+  ...
+  $client = new Client();
+  ```
+
+### 3. Exception: Name Collisions
+
+Aliases are **only** permitted when two imported classes share the same short name, or when an imported class shares the same name as the class being defined.
+
+- **Permitted**:
+  ```php
+  use GuzzleHttp\Client as GuzzleClient;
+  use RetailRocket\Http\Client; // Internal client takes precedence or is aliased if needed
+  ```
