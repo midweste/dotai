@@ -30,3 +30,7 @@
 - Do not "improve" working code unless the improvement is directly requested.
 - When fixing a bug, change only the minimum code necessary to resolve the issue.
 - If you believe logic should be changed but it wasn't requested, ask first before modifying.
+
+### Error Handling
+
+- **Prefer exceptions over silent fallbacks** - Throw exceptions when code encounters invalid state or missing requirements rather than making it silently "work" in ways it shouldn't. Fail loud, not quiet.

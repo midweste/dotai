@@ -4,6 +4,7 @@
 
 - Treat every artifact as production-bound: never include secrets, credentials, or customer data in prompts, logs, or generated files.
 - Redact or mock sensitive values when sharing snippets; prefer environment variables over hard-coded strings.
+- When adding an environment variable in code, always add it to `.env` and `.env.example` (if present) with a sensible default or placeholder.
 
 ## Access Controls
 
