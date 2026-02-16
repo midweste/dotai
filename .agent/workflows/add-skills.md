@@ -4,13 +4,13 @@ description: Generate a project-specific skills bundle by analyzing the codebase
 
 # Generate Skills Bundle
 
-Clone the full skills repo, analyze the codebase, use AI to match the best skills, install them to `.agent/skills/`, and clean up.
+Clone the skills repo, extract a catalog, summarize the codebase, reason about which skills match, and install them.
 
 // turbo-all
 
 ## Steps
 
-1. **Clone skills repo and save the path**:
+1. **Clone skills repo to tmp**:
 
 ```bash
 SKILLS_TMP=$(mktemp -d)
@@ -27,112 +27,112 @@ ls "$SKILLS_TMP/skills/" | wc -l
 
 If the clone fails, stop and tell the user.
 
-2. **Analyze the codebase** — understand what this project is:
+2. **Extract frontmatter from every SKILL.md into a plain text catalog**:
 
-```bash
-echo "=== Package Managers ==="
-for f in composer.json package.json requirements.txt Gemfile go.mod Cargo.toml pyproject.toml; do
-  found=$(find . -maxdepth 3 -name "$f" -not -path "*/vendor/*" -not -path "*/node_modules/*" 2>/dev/null | head -3)
-  [ -n "$found" ] && echo "$f: $found"
-done
-
-echo "=== Top 15 File Extensions ==="
-find . -type f -not -path "*/vendor/*" -not -path "*/node_modules/*" -not -path "*/.git/*" -not -path "*/.agent/*" 2>/dev/null \
-  | grep -oP '\.[^./]+$' | sort | uniq -c | sort -rn | head -15
-
-echo "=== Framework Detection ==="
-for f in $(find . -maxdepth 3 -name "composer.json" -not -path "*/vendor/*" 2>/dev/null); do
-  echo "--- $f ---"
-  cat "$f" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(k) for k in list(d.get('require',{}).keys())[:10]]" 2>/dev/null
-done
-for f in $(find . -maxdepth 3 -name "package.json" -not -path "*/node_modules/*" 2>/dev/null | head -2); do
-  echo "--- $f ---"
-  cat "$f" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(k) for k in list(d.get('dependencies',{}).keys())[:10]]" 2>/dev/null
-done
-
-echo "=== Infrastructure ==="
-ls -1 Dockerfile docker/Dockerfile docker-compose.yml docker-compose*.yml Makefile .github/workflows/*.yml 2>/dev/null
-
-echo "=== Project Structure ==="
-find . -maxdepth 2 -type d -not -path "*/vendor/*" -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null | sort | head -30
-```
-
-After reading this output, write a 3-5 line **project profile** for use in step 4.
-
-3. **Extract skill catalog as JSON** — use Python (more reliable than bash for 800+ entries):
+One skill per line: `slug - description`
 
 ```bash
 SKILLS_TMP=$(cat /tmp/.skills_tmp_path)
 python3 -c "
-import os, json
-skills = {}
-base = '$SKILLS_TMP/skills'
+import os, re
+
+base = os.path.join('$SKILLS_TMP', 'skills')
+lines = []
 for name in sorted(os.listdir(base)):
     skill_md = os.path.join(base, name, 'SKILL.md')
-    if os.path.isfile(skill_md):
-        desc = ''
-        with open(skill_md) as f:
-            for line in f:
-                if line.strip().lower().startswith('description:'):
-                    desc = line.split(':', 1)[1].strip().strip('\"').strip(\"'\")[:200]
-                    break
-        skills[name] = desc
-    elif os.path.isdir(os.path.join(base, name)):
-        skills[name] = ''
-print(json.dumps(skills, indent=None, separators=(',', ':')))
-" > /tmp/.skills_catalog.json
-echo "Catalog size: $(wc -c < /tmp/.skills_catalog.json) bytes, $(python3 -c "import json; print(len(json.load(open('/tmp/.skills_catalog.json'))))" ) skills"
+    if not os.path.isfile(skill_md):
+        continue
+    desc = ''
+    with open(skill_md) as f:
+        content = f.read(2000)
+    fm = re.match(r'^---\s*\n(.*?)\n---', content, re.DOTALL)
+    if fm:
+        for line in fm.group(1).splitlines():
+            if line.strip().lower().startswith('description:'):
+                desc = line.split(':', 1)[1].strip().strip('\"').strip(\"'\")[:150]
+                break
+    if not desc:
+        body = content.split('---', 2)[-1].strip() if '---' in content else content
+        for line in body.splitlines():
+            line = line.strip()
+            if line and not line.startswith('#') and not line.startswith('---'):
+                desc = line[:150]
+                break
+    lines.append(f'{name} - {desc}')
+
+with open('/tmp/.skills_catalog.txt', 'w') as f:
+    f.write('\n'.join(lines) + '\n')
+print(f'Catalog: {len(lines)} skills, one per line')
+"
 ```
 
-4. **Select up to 20 skills** using your project understanding from step 2 and the catalog from step 3.
+3. **Reason through the codebase** to understand what this project is:
 
-Read the catalog output. Think about what this project **actually does** and what problems its developers face — then pick skills that address those real needs.
+Explore the project freely — look at file extensions, directory structure, dependency files (composer.json, package.json, etc. wherever they live), infrastructure (Dockerfile, docker-compose, Makefile, CI configs), and any other signals that reveal the tech stack, architecture, and domain.
 
-> **Do NOT keyword-match.** The skill name `data-engineer` doesn't match because the project has "data" in it — it matches because the project is an ecommerce product pipeline that syncs, transforms, and pushes data between systems. That's data engineering work.
->
-> ❌ Bad: "project has PHP files → pick `php-pro`"
-> ✅ Good: "project has 11K+ PHP files with complex OOP patterns, generators, and SPL usage → `php-pro` will help write idiomatic PHP"
+Use whatever tools make sense: `find`, `ls`, `cat`, `view_file`, etc. Don't rely on a single fixed script — poke around until you understand:
 
-For each selected skill, state WHY it's relevant — citing a specific aspect of the project, not just a keyword overlap.
+- What languages/frameworks are used
+- What the project actually does (its domain)
+- How it's built, tested, and deployed
+- What kinds of problems developers face working on it
 
-**Hard rules:**
+After exploring, write a 3-5 line **project profile** summarizing the tech stack, architecture, domain, and key concerns.
 
-- Max ONE skill per concern area (e.g., pick one code review skill, one testing skill)
+4. **Read the catalog and reason about skill selection**:
+
+Read `/tmp/.skills_catalog.txt` using `view_file`.
+
+You now have:
+
+- The **project profile** from step 3
+- The **full skill catalog** with slug + description for every skill
+
+Using both, reason about which skills genuinely match this project — the same way you'd answer "which of these skills are relevant to this project?" if someone pasted both into a conversation.
+
+**Selection rules:**
+
+- Select 10-20 skills maximum
+- Max ONE skill per concern area (e.g., one code review skill, one testing skill, one bash skill)
 - Skip skills for languages/frameworks/platforms NOT in the project
 - Skip penetration testing unless it's a security project
 - Prefer specific skills (e.g., `laravel-expert`) over generic ones (e.g., `backend-architect`) when both exist
+- Do NOT keyword-match — match based on what the project actually does and what problems its developers face
+
+> ❌ Bad: "project has PHP files → pick `php-pro`"
+> ✅ Good: "project has complex OOP patterns, generators, SPL usage → `php-pro` helps write idiomatic PHP"
 
 5. **Install selected skills**:
 
 ```bash
 SKILLS_TMP=$(cat /tmp/.skills_tmp_path)
 
-# Remove existing curated skills (both directories and symlinks)
+# Remove existing skills
 find .agent/skills/ -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} +
 find .agent/skills/ -mindepth 1 -maxdepth 1 -type l -exec rm -f {} +
 mkdir -p .agent/skills
 
-# Copy each selected skill from temp clone
-for skill in <space-separated list from step 4>; do
+# Copy each selected skill
+for skill in <space-separated slugs from step 4>; do
   if [ -d "$SKILLS_TMP/skills/$skill" ]; then
     cp -r "$SKILLS_TMP/skills/$skill" ".agent/skills/$skill"
     echo "✅ $skill"
   else
-    echo "⚠️ $skill not found in repo"
+    echo "⚠️  $skill not found in repo"
   fi
 done
 ```
 
-6. **Clean up temp directory**:
+6. **Clean up**:
 
 ```bash
 SKILLS_TMP=$(cat /tmp/.skills_tmp_path)
 rm -rf "$SKILLS_TMP"
-rm -f /tmp/.skills_tmp_path /tmp/.skills_catalog.json
+rm -f /tmp/.skills_tmp_path /tmp/.skills_catalog.txt
 echo "Cleaned up."
 ```
 
-7. **Verify** the bundle:
+7. **Verify**:
 
 ```bash
 echo "Skills installed:"
@@ -149,24 +149,24 @@ for d in .agent/skills/*/; do
 done
 ```
 
-Confirm count is ≤ 20 and every directory contains a SKILL.md.
+Confirm count is ≤ 20 and every directory has a SKILL.md.
 
 ## Output
 
-Report to the user with your reasoning:
+Report to the user:
 
 ### Project Profile
 
-[3-5 line summary from step 2]
+[3-5 line summary from step 3]
 
 ### Selected Skills (N/20)
 
-| #   | Skill      | Reason         |
-| --- | ---------- | -------------- |
-| 1   | skill-name | Your reasoning |
+| #   | Skill      | Reason                             |
+| --- | ---------- | ---------------------------------- |
+| 1   | skill-name | Why it matches a real project need |
 
 ### Notable Exclusions
 
-| Skill      | Reason                                       |
-| ---------- | -------------------------------------------- |
-| skill-name | Why it was excluded despite seeming relevant |
+| Skill      | Reason                                |
+| ---------- | ------------------------------------- |
+| skill-name | Why excluded despite seeming relevant |
