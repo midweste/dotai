@@ -1,143 +1,108 @@
 ---
-description: Audit how effectively .agent rules, skills, and tools are being used across recent conversations. Run periodically to identify gaps and improvements.
+description: Audit .agent/rules/ and .agent/workflows/ for overlap, gaps, conflicts, staleness, and agent compliance
 ---
 
-# /audit-agent — Agent Effectiveness Audit
+# Audit Agent System
 
-Evaluate whether the `.agent/` system (rules, skills, parallelism, workflows) is working in practice. Produces a report with findings and recommendations.
-
-**Run periodically** (e.g., weekly or after a batch of conversations) to catch drift.
+Systematically evaluate every file in `.agent/rules/` and `.agent/workflows/` against the criteria below. Produce a scored report with concrete recommendations.
 
 ## Steps
 
-### 1. Inventory the current .agent setup
-
-// turbo
-
-List what's currently configured:
+1. **Inventory** — list every file in both directories with size and last-modified date:
 
 ```bash
-echo "=== Rules ===" && ls -1 .agent/rules/
-echo "=== Skills (active) ===" && ls -1 .agent/skills/
-echo "=== Skills (available) ===" && ls -1 .agent/skills-available/ | wc -l
-echo "=== Workflows ===" && ls -1 .agent/workflows/
+ls -lh .agent/rules/ .agent/workflows/
 ```
 
-Record the counts for the report.
+2. **Read every file** — load all rule and workflow files so you have full context before evaluating.
 
-### 2. Scan recent conversations for skill usage
+3. **Evaluate each category** below. For each question, answer with ✅ (pass), ⚠️ (concern), or ❌ (fail) plus a brief explanation.
 
-// turbo
+---
 
-Search conversation artifacts for evidence of SKILL.md files being read:
+### Rules: Structure & Organization
 
-```bash
-grep -rl "SKILL.md" ~/.gemini/antigravity/brain/ --include="*.txt" --include="*.md" 2>/dev/null
+| #   | Question                                                                                                                                           |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **Overlap** — Do any two rule files cover the same topic? List specific duplicated guidance.                                                       |
+| 2   | **Granularity** — Are any rule files too large (>5KB) to be a single rule? Should they be split?                                                   |
+| 3   | **Naming** — Is the `core-*` / `language-*` / `platform-*` convention clear? Would an agent know where to look?                                    |
+| 4   | **Missing coverage** — Are there languages, platforms, or concerns used in projects that have no rule file?                                        |
+| 5   | **Misplaced rules** — Are there rules in one file that belong in a different file? Flag any rules whose topic doesn't match the file they live in. |
+| 6   | **Condensation** — Could any rule files be merged without losing clarity? Flag files too thin to justify standalone existence.                     |
+
+### Rules: Effectiveness
+
+| #   | Question                                                                                         |
+| --- | ------------------------------------------------------------------------------------------------ |
+| 7   | **Actionability** — Is every rule concrete enough to act on? Flag any that are too vague.        |
+| 8   | **Testability** — For each rule, could an agent verify it followed it? Flag unenforceable rules. |
+| 9   | **Conflicts** — Do any rules contradict each other across files? Quote the conflicting lines.    |
+| 10  | **Priority** — When rules conflict, is it clear which wins? Is priority documented?              |
+
+### Workflows: Structure & Organization
+
+| #   | Question                                                                                                   |
+| --- | ---------------------------------------------------------------------------------------------------------- |
+| 11  | **Overlap** — Do any two workflows cover the same task? List specific duplicated steps.                    |
+| 12  | **Naming** — Are workflow filenames descriptive and consistent? Would a user know which to invoke?         |
+| 13  | **Missing coverage** — Are there common agent tasks (debugging, refactoring, deployment) with no workflow? |
+| 14  | **Descriptions** — Does every workflow have a YAML `description` that clearly explains when to use it?     |
+
+### Workflows: Effectiveness
+
+| #   | Question                                                                                                                             |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| 15  | **Frontmatter** — Does every workflow have valid YAML frontmatter with a `description` field? Flag missing or malformed frontmatter. |
+| 16  | **Actionability** — Is every workflow step concrete enough to execute? Flag vague steps.                                             |
+| 17  | **Turbo annotations** — Are `// turbo` annotations applied correctly? Read-only steps should have it; mutating steps should not.     |
+| 18  | **Self-containment** — Can each workflow be executed with only its own instructions, or does it depend on undocumented context?      |
+
+### Cross-Cutting
+
+| #   | Question                                                                                                                                      |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| 19  | **Rule/workflow boundary** — Do any rules duplicate what a workflow orchestrates? Rules should define the _what_; workflows the _how_.        |
+| 20  | **Scope & portability** — Do any rules or workflows reference specific repos, file paths, or tools that won't exist in every project?         |
+| 21  | **Conditional activation** — Do platform/language rules document when to skip them? Are workflows scoped to the right contexts?               |
+| 22  | **Orphan references** — Do any rules or workflows reference files, workflows, or rules that don't exist? Cross-check all internal references. |
+| 23  | **Staleness** — Are any rules or workflows outdated (deprecated APIs, old patterns, stale cross-references)?                                  |
+| 24  | **Token budget** — Total size of all rule + workflow files in KB/tokens. Reasonable for agent context windows?                                |
+| 25  | **Pre-flight compliance** — Does the pre-flight rule clearly instruct agents to read all rule files? Any gaps?                                |
+| 26  | **Signal-to-noise** — Are there rules or workflows agents would likely ignore due to length, vagueness, or low relevance?                     |
+| 27  | **Sweep coverage** — Do all sweeps in `core-quality-assurance.md` map to a concrete declarative section?                                      |
+
+---
+
+4. **Score** — assign an overall health score:
+
+| Score | Meaning                           |
+| ----- | --------------------------------- |
+| A     | Clean — no ❌, ≤2 ⚠️              |
+| B     | Healthy — no ❌, 3-5 ⚠️           |
+| C     | Needs attention — 1-2 ❌ or 6+ ⚠️ |
+| D     | Overhaul recommended — 3+ ❌      |
+
+5. **Recommendations** — for every ⚠️ and ❌, propose a specific fix:
+   - Files to merge, split, rename, or delete
+   - Rules to reword, elevate, or remove
+   - Missing rules or workflows to create
+   - Sections to move from rules into workflows (or vice versa)
+
+## Output
+
 ```
+## Agent System Audit — <date>
 
-For each hit, check whether the skill was **read for guidance** (good) or just **mentioned** (doesn't count). Record:
+### Summary
+- Rule files: <count>
+- Workflow files: <count>
+- Total size: <KB>
+- Score: <A/B/C/D>
 
-- Total conversations scanned
-- Conversations where a skill was actually read and applied
-- Which skills were used
-- Which active skills have NEVER been used
+### Findings
+<table of all 27 questions with ✅/⚠️/❌ and explanation>
 
-### 3. Check parallelism rule adherence
-
-Search recent conversation artifacts for parallelism-related keywords:
-
-```bash
-grep -rl "parallelism\|parallel\|dispatch\|gateway" ~/.gemini/antigravity/brain/ --include="*.txt" --include="*.md" 2>/dev/null
+### Recommendations
+<numbered list of specific actions>
 ```
-
-For each recent conversation, check:
-
-- [ ] Was parallelism evaluated before starting work?
-- [ ] Was the evaluation reported to the user?
-- [ ] Were agents dispatched when work was parallelizable?
-- [ ] If skipped, was a valid reason given?
-
-### 4. Check rule adherence
-
-For each file in `.agent/rules/`, check whether the rule's requirements were followed in recent conversations:
-
-- Read each rule file to understand its requirements
-- Search conversation artifacts for evidence of compliance or violation
-- Flag rules that appear to be consistently ignored
-
-### 5. Evaluate skill relevance
-
-Review the active skills list against recent work:
-
-- Which skills match the actual tasks performed?
-- Are there skills that should be **added** (task needed guidance that wasn't available)?
-- Are there skills that should be **removed** (present but never relevant)?
-- Check `.agent/skills-available/` for skills that would have been useful but aren't linked
-
-### 6. Generate the report
-
-Create the report at `docs/agent-audit-YYYY-MM-DD.md`:
-
-```markdown
-# Agent Effectiveness Audit — YYYY-MM-DD
-
-## Summary
-
-| Metric                | Value          |
-| --------------------- | -------------- |
-| Conversations scanned | N              |
-| Skills used           | N / N active   |
-| Parallelism evaluated | N / N eligible |
-| Rules followed        | N / N rules    |
-
-## Skill Usage
-
-### Used
-
-- skill-name — used in conversation [ID], for [purpose]
-
-### Never Used (candidates for removal)
-
-- skill-name — active but unused in N conversations
-
-### Missing (candidates for addition)
-
-- skill-name — available in skills-available, would have helped with [task]
-
-## Rule Adherence
-
-### Followed
-
-- rule-name — consistently followed
-
-### Violated
-
-- rule-name — violated in conversation [ID]: [description]
-
-### Not Testable
-
-- rule-name — cannot determine from artifacts alone
-
-## Parallelism
-
-### Dispatched
-
-- Conversation [ID]: dispatched N agents for [task]
-
-### Missed Opportunities
-
-- Conversation [ID]: [task] had N independent sub-tasks but ran sequentially
-
-## Recommendations
-
-1. **[Action]** — [rationale]
-2. **[Action]** — [rationale]
-```
-
-### 7. Present findings
-
-Report the summary to the user with the full audit doc path. Highlight:
-
-- Top 3 most impactful recommendations
-- Any rules that need revision (like the <30s exception we found)
-- Skill additions/removals to action immediately

@@ -1,36 +1,19 @@
-## Code Editing Safety Rules
+# Code Editing & Preservation Rules
 
-### Replacement Content Rules
+## Edit Safety
 
-- **Prefer small, focused edits** - When replacing code, target the smallest possible section. Avoid replacing entire function bodies when only a few lines need to change.
-- **Never use escape sequences in replacement content** - ReplacementContent must contain actual newlines and whitespace, not `\n` or `\t` escape sequences. These will be inserted literally and corrupt the file.
-- **Verify brace balance** - Before and after editing control structures (if/foreach/function), verify the opening and closing braces are balanced. Count them if necessary.
+- Target smallest possible section; avoid replacing entire function bodies.
+- **Never use escape sequences** (`\n`, `\t`) in replacement content — use actual newlines/whitespace.
+- Verify brace balance before and after editing control structures.
+- Run syntax check after every edit; do not proceed until it passes.
+- View edited region after replacement to confirm correctness.
+- Match TargetContent exactly (including whitespace). Preserve surrounding structure and enclosing braces.
 
-### Post-Edit Verification
+## Code Preservation
 
-- **Run syntax check after every edit** - Always run immediately after editing files. Do not proceed until syntax passes.
-- **View the edited region after replacement** - After making an edit, view the modified lines to confirm the change was applied correctly before continuing.
+- Never remove commented-out code unless asked. Preserve all existing comments. Move comments with refactored code.
+- Never change logic unless required by the task. Don't "improve" working code unless requested. Fix bugs with minimum changes. Ask before modifying unrequested logic.
 
-### Multi-line Replacement Safety
+## Error Handling
 
-- **Match TargetContent exactly** - The TargetContent must match the file exactly, including all whitespace and indentation. View the target lines immediately before editing to capture exact content.
-- **Preserve surrounding structure** - When replacing code inside a block, ensure the replacement maintains all enclosing braces: if the target includes `}`, the replacement must include it too.
-
-## Code Preservation Rules
-
-### Comment Preservation
-
-- **Never remove commented-out code** unless explicitly asked. Commented code often represents intentional placeholders, debugging aids, or future work.
-- **Preserve all existing comments** including inline comments, block comments, and documentation comments.
-- If refactoring moves code, move its associated comments with it.
-
-### Logic Stability
-
-- **Never arbitrarily change logic** - Only modify logic when explicitly required to complete the requested task.
-- Do not "improve" working code unless the improvement is directly requested.
-- When fixing a bug, change only the minimum code necessary to resolve the issue.
-- If you believe logic should be changed but it wasn't requested, ask first before modifying.
-
-### Error Handling
-
-- **Prefer exceptions over silent fallbacks** - Throw exceptions when code encounters invalid state or missing requirements rather than making it silently "work" in ways it shouldn't. Fail loud, not quiet.
+- Prefer exceptions over silent fallbacks — fail loud, not quiet.

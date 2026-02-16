@@ -1,16 +1,16 @@
 ---
-description: Run a QA sweep against the codebase using quality-assurance rules
+description: Run a QA sweep against the codebase using core-quality-assurance rules
 ---
 
 # QA Sweep
 
-Run a structured quality assurance pass over the codebase (or a targeted scope) using the checks defined in `.agent/rules/quality-assurance.md`.
+Run a structured quality assurance pass over the codebase (or a targeted scope) using the checks defined in `.agent/rules/core-quality-assurance.md`.
 
 ## Steps
 
 1. **Load the QA rules**:
 
-Read `.agent/rules/quality-assurance.md` in full. Every section is a checklist item.
+Read `.agent/rules/core-quality-assurance.md` in full. Every section is a checklist item.
 
 2. **Determine scope**:
    - If the user specified files, directories, or a PR diff — scope to those.

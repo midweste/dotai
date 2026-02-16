@@ -53,7 +53,7 @@ Count: **N rules apply, N were naturally followed. Gap: N.**
 
 ### Parallelism audit
 
-Compare the Phase 1 work order against `parallel-evaluation.md` requirements:
+Compare the Phase 1 work order against `core-parallel-evaluation.md` requirements:
 
 - List all discrete tasks from Phase 1
 - Identify which were planned sequentially but could have been parallel

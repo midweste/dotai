@@ -1,49 +1,32 @@
-# Node.js Platform Rules
+# Node.js Rules
 
-> **Conditional**: Apply only when Node.js is detected (look for `package.json` with a `node` engine or `node_modules/` in the project). Skip this file entirely for non-Node projects.
+> **Conditional**: Apply only when Node.js is detected (`package.json` with node engine or `node_modules/`). Skip for non-Node projects.
 
-## Runtime & Dependency Management
+## Runtime & Deps
 
-- Target Node.js 20.x LTS unless project notes specify otherwise.
-- Use npm as the default package manager; lock dependencies with `package-lock.json` committed.
-- Keep production dependencies lean; move build/test tools to `devDependencies`.
+- Target Node 20.x LTS. npm default; commit `package-lock.json`. Production deps lean; build/test tools in `devDependencies`.
 
-## Security Practices
+## Security
 
-- Run `npm audit --production` (or `npm audit fix --force` only with approval) before publishing builds.
-- Load secrets exclusively from environment variables or secrets managers; never commit `.env` files.
-- Enforce HTTPS for outbound requests and validate external payloads (JSON schema or explicit guards).
+- `npm audit --production` before builds. Secrets from env vars/secrets managers only. HTTPS for outbound; validate external payloads.
 
-## Testing & Linting
+## Testing & Lint
 
-- Provide an `npm test` script that runs the full unit/integration suite.
-- Add `npm run lint` (ESLint + Prettier) to CI; fail builds on lint errors.
-- Prefer fast, deterministic tests; gate long-running e2e suites behind explicit flags.
+- `npm test` for full suite. `npm run lint` (ESLint + Prettier) in CI; fail on errors. Fast, deterministic tests; gate e2e behind flags.
 
-## Build & Deployment
+## Build & Deploy
 
-- Bundle assets via `npm run build` (esbuild/Vite/Webpack) and output to `dist/` or a documented folder.
-- Avoid globally installed CLIs in pipelines; rely on local `node_modules/.bin` binaries.
-- Document environment variables (e.g., `NODE_ENV`, API keys) in deployment playbooks.
+- Bundle via `npm run build` to `dist/`. Use local `node_modules/.bin`, not global CLIs. Document env vars in playbooks.
 
 ## Observability
 
-- Use structured logging (`JSON.stringify` or libraries like Pino) for services; redact sensitive fields.
-- Surface unhandled promise rejections via process hooks and fail fast rather than ignoring errors.
+- Structured logging (Pino or `JSON.stringify`); redact sensitive fields. Handle unhandled rejections; fail fast.
 
 ## Language & Patterns
 
-- Prefer ES modules in Node 20; avoid mixing CommonJS and ESM. Use `.cjs` only when interoperability is unavoidable.
-- Use `async/await` over callbacks or raw `.then`; ensure every promise is awaited or intentionally fire-and-forget with error handling.
-- Default to `const`/`let`; never use `var`. Keep functions pure where possible; isolate side effects at the edges.
-- Normalize error handling with typed/domain errors mapped to HTTP responses; never leak stack traces in responses.
-- Validate all external input (requests, env/config, file reads) at boundaries; treat `process.env` access as untrusted and schema-validate once at startup.
-- Keep time and randomness injectable for testability (e.g., pass clocks/UUID generators).
+- ES modules in Node 20; `.cjs` only for interop. `async/await` over callbacks. `const`/`let` only.
+- Typed/domain errors mapped to HTTP responses; no stack leaks. Validate all external input at boundaries. Injectable time/randomness.
 
-## Code Structure
+## Structure
 
-- Organize by feature or layer: HTTP handlers/controllers → services/use-cases → repositories/adapters; keep domain logic out of transport layers.
-- Keep configuration centralized (single `config` module) instead of scattered `process.env` reads; provide defaults and fail fast on missing requirements.
-- Encapsulate data access in repositories; do not perform raw queries or driver calls in controllers/handlers.
-- Keep shared utilities framework-agnostic; avoid hidden singletons—prefer dependency injection or explicit parameter passing.
-- Co-locate tests with the code they cover (`*.test.js/ts`) and mirror the feature structure for clarity.
+- Organize by feature/layer: handlers → services → repositories. Centralized config module; fail fast on missing vars. No raw queries in controllers. Co-locate tests (`*.test.js`).

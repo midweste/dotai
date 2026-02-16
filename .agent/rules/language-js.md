@@ -1,25 +1,19 @@
 # JavaScript Rules (Browser / jQuery)
 
-## Style Guide
+## Style
 
-- Prefer modern ES modules; use `import`/`export` in browsers that support them, or the project’s bundler if present.
-- Enforce semicolons, single quotes, 2-space indentation, trailing commas (ES5), and bracket spacing.
-- Keep arrow functions concise but always include parentheses around parameters for readability.
-- Use native DOM APIs first; reach for jQuery only when it simplifies cross-browser DOM/event handling already in use by the project.
+- ES modules (`import`/`export`) or project bundler. Semicolons, single quotes, 2-space indent, trailing commas (ES5), bracket spacing.
+- Parentheses on arrow params. Native DOM APIs first; jQuery only when already in use by project.
 
-## Code Organization
+## Organization
 
-- Place shared utilities in dedicated modules; avoid deep relative paths—prefer shallow module hierarchies or documented import maps.
-- Co-locate component files (JS + CSS) when it improves clarity, but avoid circular dependencies.
-- Name scripts and components using `camelCase` filenames; tests follow `*.test.{js,ts,jsx,tsx}`.
-- Avoid Node-specific globals/APIs (`require`, `module`, `process`) in browser code; keep code runtime-agnostic unless explicitly for build tooling.
+- Shared utilities in dedicated modules; shallow hierarchies. Co-locate JS + CSS per component.
+- `camelCase` filenames; tests as `*.test.{js,ts,jsx,tsx}`. No Node globals (`require`, `process`) in browser code.
 
 ## Type Safety
 
-- Use JSDoc typedefs (or TypeScript if the project already uses it) for complex structures; provide explicit interfaces for API payloads.
-- Validate external data with lightweight runtime guards; avoid shipping server-only validation libs to the client.
+- JSDoc typedefs (or TypeScript if project uses it) for complex structures. Lightweight runtime guards for external data.
 
 ## Testing
 
-- Provide `npm test` or `npm run test:js` scripts that cover unit and integration cases; run tests in a browser-like environment (JSDOM/Karma) when DOM or jQuery is involved.
-- Favor browser-like test environments; mock platform globals only when required by the framework.
+- `npm test` / `npm run test:js` covering unit + integration. Browser-like env (JSDOM/Karma) for DOM/jQuery. Mock platform globals only when framework requires.

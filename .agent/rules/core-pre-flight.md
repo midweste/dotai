@@ -18,4 +18,4 @@ When rules conflict, apply this precedence (highest first):
 1. **CRITICAL-prefixed rules** — non-negotiable directives
 2. **Platform rules** (`platform-*.md`) — apply only when the platform is detected; skip otherwise
 3. **Language rules** (`language-*.md`) — apply only for matching file types
-4. **General rules** (`workflow.md`, `engineering.md`, `quality-assurance.md`, `testing.md`) — always apply
+4. **Core rules** (`core-workflow.md`, `core-engineering.md`, `core-quality-assurance.md`, `core-testing.md`) — always apply
