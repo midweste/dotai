@@ -1,0 +1,866 @@
+#!/usr/bin/env python3
+"""Gemini Gateway — rate-limit coordinator for concurrent Gemini CLI subagent dispatch.
+
+Sits between Antigravity and Gemini CLI. Each invocation is a blocking wrapper that:
+- Checks queue depth before enqueuing
+- Serializes timing via SQLite exclusive transactions
+- Adaptively learns the right request gap
+- Retries rate-limited requests automatically
+
+Usage:
+  gemini-gateway --model <flash|pro> --prompt "..." [--label "..."] [--timeout N] [--cwd /path]
+  gemini-gateway --status
+  gemini-gateway --jobs
+  gemini-gateway --pacing
+  gemini-gateway --stats [--last Xh]
+  gemini-gateway --cancel <id> | --cancel --model <flash|pro>
+"""
+
+import argparse
+import hashlib
+import json
+import os
+import random
+import signal
+import sqlite3
+import subprocess
+import sys
+import time
+
+# ── Gateway Configuration ──────────────────────────────
+# Edit these values to tune the gateway. Every parameter is commented.
+CONFIG = {
+    # Model name mapping (intent label → full Gemini model string)
+    # Use intent labels with --model flag: --model quick, --model fast, --model think, --model deep
+    # To swap underlying models, change here only.
+    # Direct model names (e.g. "gemini-2.5-flash") also work as --model values.
+    "models": {
+        "quick": "gemini-2.5-flash",         # Lightest — trivial edits, config changes, one-liners
+        "fast":  "gemini-3-flash-preview",    # Smarter flash — simple methods, renames, refactors
+        "think": "gemini-2.5-pro",            # Proven pro — multi-file refactors, new classes
+        "deep":  "gemini-3-pro-preview",      # Deepest reasoning — architecture, complex logic
+    },
+
+    # Max concurrent execution slots per model (how many run simultaneously)
+    # This is the throttle — keeps RPM within quota
+    "max_concurrent": {
+        "quick": 2,
+        "fast":  2,
+        "think": 2,
+        "deep":  2,
+    },
+
+    # Max total pending jobs per model (waiting + running + retrying)
+    # Jobs beyond max_concurrent but within max_queue will wait for a slot.
+    # Jobs beyond max_queue are rejected immediately with exit 2 (QUEUE_FULL).
+    # Set high — the workflow decides batch size, not the gateway.
+    "max_queue": {
+        "quick": 50,
+        "fast":  50,
+        "think": 50,
+        "deep":  50,
+    },
+
+    # How often queued jobs check for an open slot (seconds)
+    "queue_poll_interval_s": 3,
+
+    # Starting gap between request launches per model (milliseconds)
+    # Higher = safer cold start, lower = faster but riskier
+    # The adaptive algorithm will tune this automatically over time
+    "initial_gap_ms": {
+        "quick": 2000,
+        "fast":  2000,
+        "think": 3000,
+        "deep":  3000,
+    },
+
+    # Fastest allowed gap (ms) — floor the adaptive algorithm won't go below
+    # Too low risks aggregate RPM from concurrent sessions exceeding quota.
+    # Each gemini session makes ~10-20 internal API calls. At 800ms floor with
+    # 3 concurrent sessions, peak launch rate is ~75/min — manageable because
+    # the adaptive learning backs off if sessions start failing.
+    "floor_ms": {
+        "quick": 1500,
+        "fast":  1500,
+        "think": 2000,
+        "deep":  2000,
+    },
+
+    # Slowest gap after repeated rate-limits (ms) — ceiling
+    # If the gap reaches this, something is very wrong (quota exhausted?)
+    "ceiling_ms": 10000,  # Tuned from 30000 — cap prevents recovery standstills
+
+    # Random jitter added to each wait (ms range)
+    # Prevents thundering herd when multiple gateway calls wake at the same time
+    "jitter_ms": (0, 250),
+
+    # Adaptive learning: speedup on success
+    # Multiply gap by this on each success. Lower = faster acceleration.
+    # 0.92 means gap shrinks by 8% per success — aggressive but recoverable
+    "speedup_factor": 0.90,  # Tuned from 0.92 — slightly faster recovery from slowdowns
+
+    # Adaptive learning: slowdown on rate-limit
+    # Multiply gap by this on rate-limit. Higher = more cautious.
+    # 1.5 means gap grows by 50% per rate-limit hit
+    "slowdown_factor": 1.3,  # Tuned from 1.5 — less aggressive compounding on repeated hits
+
+    # Backoff: initial penalty added after a rate-limit (ms)
+    # This is on top of the gap increase. Drains by 500ms per success.
+    "backoff_initial_ms": 1500,  # Tuned from 2000 — shorter penalty, faster retry
+
+    # Backoff: maximum cap (ms) — prevents runaway backoff
+    "backoff_max_ms": 8000,  # Tuned from 30000 — prevents the 14s+ backoff we saw in testing
+
+    # Streak bonus: consecutive successes before activating aggressive speedup
+    # After this many successes in a row, use streak_speedup instead of speedup_factor
+    "streak_threshold": 3,  # Tuned from 5 — faster streak engagement for recovery
+
+    # Streak bonus: stronger speedup factor for sustained success streaks
+    # 0.85 means gap shrinks by 15% per success during a streak
+    "streak_speedup": 0.85,
+
+    # Maximum retry attempts for rate-limited requests before giving up
+    "max_retries": 3,  # Tuned from 5 — fail fast and let me do it, 5 retries wasted ~30s
+
+    # Default subprocess timeout (seconds) — overridable via --timeout flag
+    # Pro tasks averaged 30s with p95 at 63s in testing. 90s gives headroom.
+    # Use --timeout 30 for quick tasks you want to fail fast.
+    "timeout_s": 90,
+
+    # Strings in stdout/stderr that indicate a rate-limit (any match triggers retry)
+    "rate_limit_signals": [
+        "429",
+        "RESOURCE_EXHAUSTED",
+        "rate limit",
+        "quota",
+        "exhausted your capacity",
+    ],
+
+    # Exit code that Gemini CLI uses when it self-cancels due to rate-limit
+    "rate_limit_exit_code": 130,
+
+    # Auto-delete completed/failed requests older than N days
+    "cleanup_days": 7,
+
+    # Database path (resolved relative to this script's directory)
+    "db_path": "../data/gateway.sqlite",
+}
+
+
+# ── SQLite Setup ───────────────────────────────────────
+
+SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    model TEXT NOT NULL,
+    status TEXT NOT NULL,
+    label TEXT,
+    prompt_hash TEXT NOT NULL,
+    pid INTEGER,
+    cwd TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    started_at REAL,
+    finished_at REAL,
+    exit_code INTEGER,
+    retry_count INTEGER NOT NULL DEFAULT 0,
+    error TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_requests_active
+    ON requests(model, status)
+    WHERE status IN ('waiting', 'running', 'retrying');
+
+CREATE TABLE IF NOT EXISTS pacing (
+    model TEXT PRIMARY KEY,
+    min_gap_ms INTEGER NOT NULL,
+    last_request_at REAL NOT NULL DEFAULT 0,
+    backoff_ms INTEGER NOT NULL DEFAULT 0,
+    consecutive_ok INTEGER NOT NULL DEFAULT 0,
+    total_ok INTEGER NOT NULL DEFAULT 0,
+    total_rate_limited INTEGER NOT NULL DEFAULT 0
+);
+"""
+
+
+def get_script_dir():
+    """Get the directory containing this script."""
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def get_db_path():
+    """Resolve the database path relative to the script location."""
+    return os.path.normpath(os.path.join(get_script_dir(), CONFIG["db_path"]))
+
+
+def get_db():
+    """Open SQLite connection with required pragmas, ensure schema exists."""
+    db_path = get_db_path()
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+
+    # Required pragmas for concurrent access
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=10000")
+    conn.execute("PRAGMA synchronous=NORMAL")
+
+    # Create tables if first run
+    conn.executescript(SCHEMA_SQL)
+
+    # Ensure pacing rows exist for all configured models
+    for alias, full_name in CONFIG["models"].items():
+        initial_gap = CONFIG["initial_gap_ms"].get(alias, 1200)
+        conn.execute(
+            "INSERT OR IGNORE INTO pacing (model, min_gap_ms) VALUES (?, ?)",
+            (full_name, initial_gap)
+        )
+    conn.commit()
+
+    return conn
+
+
+def clean_stale_pids(conn):
+    """Check running/waiting/retrying requests for dead PIDs. Mark as failed."""
+    rows = conn.execute(
+        "SELECT id, pid FROM requests WHERE status IN ('waiting', 'running', 'retrying') AND pid IS NOT NULL"
+    ).fetchall()
+
+    for row in rows:
+        try:
+            os.kill(row["pid"], 0)  # Check if process is alive
+        except (ProcessLookupError, PermissionError):
+            conn.execute(
+                "UPDATE requests SET status='failed', error='process died (stale PID)', finished_at=? WHERE id=?",
+                (time.time(), row["id"])
+            )
+    conn.commit()
+
+
+def cleanup_old_requests(conn):
+    """Delete completed/failed requests older than cleanup_days."""
+    cutoff = time.time() - CONFIG["cleanup_days"] * 86400
+    conn.execute(
+        "DELETE FROM requests WHERE status IN ('done', 'failed') AND finished_at < ?",
+        (cutoff,)
+    )
+    conn.commit()
+
+
+def resolve_model(alias):
+    """Convert short model alias to full Gemini model string."""
+    full = CONFIG["models"].get(alias)
+    if not full:
+        valid = ", ".join(CONFIG["models"].keys())
+        print(f"Unknown model '{alias}'. Valid: {valid}", file=sys.stderr)
+        sys.exit(1)
+    return full
+
+
+def prompt_hash(prompt):
+    """SHA256 first 12 chars of the prompt for dedup/debugging."""
+    return hashlib.sha256(prompt.encode()).hexdigest()[:12]
+
+
+def detect_rate_limit(exit_code, stdout, stderr):
+    """Check if the result indicates a rate-limit. Returns True if rate-limited."""
+    if exit_code == CONFIG["rate_limit_exit_code"]:
+        return True
+    combined = (stdout or "") + (stderr or "")
+    return any(sig.lower() in combined.lower() for sig in CONFIG["rate_limit_signals"])
+
+
+# ── CLI Parsing ────────────────────────────────────────
+
+def build_parser():
+    """Build argparse parser for all gateway commands."""
+    parser = argparse.ArgumentParser(
+        prog="gemini-gateway",
+        description="Rate-limit coordinator for concurrent Gemini CLI dispatch"
+    )
+
+    # Dispatch mode
+    parser.add_argument("--model", "-m", help="Model alias: flash or pro")
+    parser.add_argument("--prompt", "-p", help="Prompt string to pass to Gemini")
+    parser.add_argument("--label", "-l", help="Short job description for observability")
+    parser.add_argument("--timeout", "-t", type=int, default=None,
+                        help=f"Subprocess timeout in seconds (default: {CONFIG['timeout_s']})")
+    parser.add_argument("--cwd", default=None, help="Working directory for Gemini (default: $PWD)")
+
+    # Observability commands
+    parser.add_argument("--status", action="store_true", help="Show queue status per model (JSON)")
+    parser.add_argument("--jobs", action="store_true", help="List active jobs (JSON)")
+    parser.add_argument("--pacing", action="store_true", help="Show adaptive pacing state (JSON)")
+    parser.add_argument("--stats", action="store_true", help="Show historical performance stats (JSON)")
+    parser.add_argument("--last", default=None, help="Time window for --stats (e.g. 1h, 24h)")
+
+    # Cancel command
+    parser.add_argument("--cancel", nargs="?", const="ALL", default=None,
+                        help="Cancel a job by ID, or all jobs for a model (with --model)")
+
+    return parser
+
+
+def main():
+    """Entry point — route to the appropriate command."""
+    parser = build_parser()
+    args = parser.parse_args()
+
+    # Open DB, clean stale PIDs and old records
+    conn = get_db()
+    clean_stale_pids(conn)
+    cleanup_old_requests(conn)
+
+    try:
+        if args.status:
+            result = cmd_status(conn)
+            print(json.dumps(result, indent=2))
+        elif args.jobs:
+            result = cmd_jobs(conn)
+            print(json.dumps(result, indent=2))
+        elif args.pacing:
+            result = cmd_pacing(conn)
+            print(json.dumps(result, indent=2))
+        elif args.stats:
+            result = cmd_stats(conn, args.last)
+            print(json.dumps(result, indent=2))
+        elif args.cancel is not None:
+            result = cmd_cancel(conn, args.cancel, args.model)
+            print(json.dumps(result, indent=2))
+        elif args.model and args.prompt:
+            sys.exit(dispatch(conn, args))
+        else:
+            parser.print_help()
+            sys.exit(1)
+    finally:
+        conn.close()
+
+
+# ── Pacing helpers ─────────────────────────────────────
+
+def update_pacing_success(conn, model):
+    """Update pacing after a successful request — speed up."""
+    row = conn.execute("SELECT * FROM pacing WHERE model=?", (model,)).fetchone()
+    if not row:
+        return
+
+    # Look up model alias for floor config
+    alias = None
+    for a, m in CONFIG["models"].items():
+        if m == model:
+            alias = a
+            break
+    floor = CONFIG["floor_ms"].get(alias, 800) if alias else 800
+
+    consecutive = row["consecutive_ok"] + 1
+    gap = row["min_gap_ms"]
+
+    if consecutive >= CONFIG["streak_threshold"]:
+        # Streak bonus: stronger speedup after sustained success
+        gap = max(floor, int(gap * CONFIG["streak_speedup"]))
+    else:
+        # Normal speedup after each success
+        gap = max(floor, int(gap * CONFIG["speedup_factor"]))
+
+    # Drain backoff gradually
+    backoff = max(0, row["backoff_ms"] - 500)
+
+    conn.execute("""
+        UPDATE pacing SET
+            min_gap_ms=?, backoff_ms=?,
+            consecutive_ok=?, total_ok=total_ok+1
+        WHERE model=?
+    """, (gap, backoff, consecutive, model))
+
+
+def update_pacing_rate_limit(conn, model):
+    """Update pacing after a rate-limit — slow down."""
+    row = conn.execute("SELECT * FROM pacing WHERE model=?", (model,)).fetchone()
+    if not row:
+        return
+
+    gap = min(int(row["min_gap_ms"] * CONFIG["slowdown_factor"]), CONFIG["ceiling_ms"])
+    backoff = min(
+        max(row["backoff_ms"] * 2, CONFIG["backoff_initial_ms"]),
+        CONFIG["backoff_max_ms"]
+    )
+
+    conn.execute("""
+        UPDATE pacing SET
+            min_gap_ms=?, backoff_ms=?,
+            consecutive_ok=0, total_rate_limited=total_rate_limited+1
+        WHERE model=?
+    """, (gap, backoff, model))
+
+
+# ── Core dispatch ──────────────────────────────────────
+
+def dispatch(conn, args):
+    """Core execution flow: enqueue, pace, run Gemini, handle result.
+
+    Returns the exit code to use.
+    """
+    model = resolve_model(args.model)
+    prompt = args.prompt
+    label = args.label or ""
+    timeout = args.timeout or CONFIG["timeout_s"]
+    cwd = args.cwd or os.getcwd()
+    phash = prompt_hash(prompt)
+    alias = args.model
+    max_concurrent = CONFIG["max_concurrent"].get(alias, 2)
+    max_queue = CONFIG["max_queue"].get(alias, 4)
+
+    request_id = None
+
+    for attempt in range(CONFIG["max_retries"] + 1):
+        # ── Step 3: Atomic queue check + pacing reservation ──
+        try:
+            conn.execute("BEGIN EXCLUSIVE")
+
+            # Count active requests for this model
+            running = conn.execute(
+                "SELECT COUNT(*) FROM requests WHERE model=? AND status='running'",
+                (model,)
+            ).fetchone()[0]
+            total_pending = conn.execute(
+                "SELECT COUNT(*) FROM requests WHERE model=? AND status IN ('queued', 'waiting', 'running', 'retrying')",
+                (model,)
+            ).fetchone()[0]
+
+            # Queue full check (only on first attempt — retries already have a slot)
+            if attempt == 0 and total_pending >= max_queue:
+                conn.execute("COMMIT")
+                print(f"QUEUE_FULL: {alias} has {total_pending}/{max_queue} jobs pending. Execute on main thread.", file=sys.stderr)
+                return 2
+
+            # Concurrency check — if no execution slot, enqueue and poll-wait
+            if attempt == 0 and running >= max_concurrent:
+                # Insert as 'queued' (not yet paced)
+                cursor = conn.execute(
+                    """INSERT INTO requests (model, status, label, prompt_hash, pid, cwd, created_at, retry_count)
+                       VALUES (?, 'queued', ?, ?, ?, ?, ?, 0)""",
+                    (model, label, phash, os.getpid(), cwd, time.time())
+                )
+                request_id = cursor.lastrowid
+                conn.execute("COMMIT")
+                print(f"QUEUED: {alias} has {running}/{max_concurrent} running. Waiting for slot...", file=sys.stderr)
+
+                # Poll-wait for a concurrency slot
+                while True:
+                    time.sleep(CONFIG["queue_poll_interval_s"])
+                    running = conn.execute(
+                        "SELECT COUNT(*) FROM requests WHERE model=? AND status='running'",
+                        (model,)
+                    ).fetchone()[0]
+                    if running < max_concurrent:
+                        break
+
+                # Got a slot — re-enter the exclusive transaction for pacing
+                conn.execute("BEGIN EXCLUSIVE")
+
+            # Read pacing data
+            pacing = conn.execute("SELECT * FROM pacing WHERE model=?", (model,)).fetchone()
+            now = time.time()
+            gap_s = pacing["min_gap_ms"] / 1000.0
+            backoff_s = pacing["backoff_ms"] / 1000.0
+            jitter_s = random.randint(*CONFIG["jitter_ms"]) / 1000.0
+
+            # Calculate wait time
+            earliest = pacing["last_request_at"] + gap_s + backoff_s + jitter_s
+            wait_time = max(0, earliest - now)
+
+            # Reserve the time slot
+            conn.execute(
+                "UPDATE pacing SET last_request_at=? WHERE model=?",
+                (now + wait_time, model)
+            )
+
+            # Insert or update request row
+            if request_id is None:
+                # First attempt: insert new request
+                cursor = conn.execute(
+                    """INSERT INTO requests (model, status, label, prompt_hash, pid, cwd, created_at, retry_count)
+                       VALUES (?, 'waiting', ?, ?, ?, ?, ?, 0)""",
+                    (model, label, phash, os.getpid(), cwd, now)
+                )
+                request_id = cursor.lastrowid
+            else:
+                # Retry: update existing request
+                conn.execute(
+                    "UPDATE requests SET status='waiting', retry_count=retry_count+1 WHERE id=?",
+                    (request_id,)
+                )
+
+            conn.execute("COMMIT")
+
+        except sqlite3.OperationalError as e:
+            # If EXCLUSIVE lock fails after busy_timeout, report and exit
+            try:
+                conn.execute("ROLLBACK")
+            except Exception:
+                pass
+            print(f"SQLite lock error: {e}", file=sys.stderr)
+            return 1
+
+        # ── Step 4: Wait for pacing ──
+        if wait_time > 0:
+            time.sleep(wait_time)
+
+        # ── Step 5: Mark as running ──
+        conn.execute(
+            "UPDATE requests SET status='running', started_at=? WHERE id=?",
+            (time.time(), request_id)
+        )
+        conn.commit()
+
+        # ── Step 6: Execute Gemini CLI ──
+        # Ignore SIGINT so Gemini CLI's self-cancellation (exit 130) doesn't
+        # kill the gateway wrapper. We handle rate-limits via exit code inspection.
+        old_sigint = signal.signal(signal.SIGINT, signal.SIG_IGN)
+        cmd = ["gemini", "-m", model, "-p", prompt, "--yolo"]
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                cwd=cwd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+
+            # Store the actual subprocess PID so --cancel can kill it directly
+            conn.execute(
+                "UPDATE requests SET pid=? WHERE id=?",
+                (proc.pid, request_id)
+            )
+            conn.commit()
+
+            stdout, stderr = proc.communicate(timeout=timeout)
+            exit_code = proc.returncode
+
+        except subprocess.TimeoutExpired:
+            # ── Step 10: Timeout — kill the subprocess ──
+            proc.kill()
+            proc.wait()
+            signal.signal(signal.SIGINT, old_sigint)
+            conn.execute(
+                "UPDATE requests SET status='failed', error=?, finished_at=?, exit_code=-1 WHERE id=?",
+                (f"timeout after {timeout}s", time.time(), request_id)
+            )
+            conn.commit()
+            print(f"TIMEOUT: gemini subprocess exceeded {timeout}s limit", file=sys.stderr)
+            return 1
+
+        # Restore SIGINT handler now that subprocess is done
+        signal.signal(signal.SIGINT, old_sigint)
+
+        # ── Step 8: Rate-limited → back off and retry ──
+        if detect_rate_limit(exit_code, stdout, stderr):
+            update_pacing_rate_limit(conn, model)
+            conn.commit()
+
+            if attempt < CONFIG["max_retries"]:
+                conn.execute(
+                    "UPDATE requests SET status='retrying' WHERE id=?",
+                    (request_id,)
+                )
+                conn.commit()
+                print(f"RATE_LIMITED: attempt {attempt + 1}/{CONFIG['max_retries'] + 1}, retrying...", file=sys.stderr)
+                continue  # Back to top of retry loop
+            else:
+                # Exhausted retries
+                conn.execute(
+                    "UPDATE requests SET status='failed', error='rate limit exhausted', finished_at=?, exit_code=? WHERE id=?",
+                    (time.time(), exit_code, request_id)
+                )
+                conn.commit()
+                if stderr:
+                    print(stderr, file=sys.stderr, end="")
+                return CONFIG["rate_limit_exit_code"]
+
+        # ── Step 9: Success ──
+        if exit_code == 0:
+            update_pacing_success(conn, model)
+            conn.execute(
+                "UPDATE requests SET status='done', finished_at=?, exit_code=0 WHERE id=?",
+                (time.time(), request_id)
+            )
+            conn.commit()
+            if stdout:
+                print(stdout, end="")
+            return 0
+
+        # ── Step 11: Other failure — propagate immediately ──
+        conn.execute(
+            "UPDATE requests SET status='failed', finished_at=?, exit_code=?, error=? WHERE id=?",
+            (time.time(), exit_code, (stderr or "")[:500], request_id)
+        )
+        conn.commit()
+        if stderr:
+            print(stderr, file=sys.stderr, end="")
+        if stdout:
+            print(stdout, end="")
+        return exit_code
+
+    # Should not reach here, but safety net
+    return 1
+
+
+# ── Observability commands ─────────────────────────────
+
+def cmd_status(conn):
+    """Show queue status per model with available slots and health indicator."""
+    result = {}
+    for alias, model in CONFIG["models"].items():
+        max_c = CONFIG["max_concurrent"].get(alias, 2)
+        max_q = CONFIG["max_queue"].get(alias, 4)
+
+        running = conn.execute(
+            "SELECT COUNT(*) as cnt FROM requests WHERE model=? AND status='running'",
+            (model,)
+        ).fetchone()["cnt"]
+
+        queued = conn.execute(
+            "SELECT COUNT(*) as cnt FROM requests WHERE model=? AND status IN ('queued', 'waiting')",
+            (model,)
+        ).fetchone()["cnt"]
+
+        retrying = conn.execute(
+            "SELECT COUNT(*) as cnt FROM requests WHERE model=? AND status='retrying'",
+            (model,)
+        ).fetchone()["cnt"]
+
+        total_pending = running + queued + retrying
+
+        pacing = conn.execute("SELECT * FROM pacing WHERE model=?", (model,)).fetchone()
+        backoff = pacing["backoff_ms"] if pacing else 0
+
+        # Health: ok → slow → busy → saturated
+        if total_pending >= max_q:
+            health = "saturated"
+        elif running >= max_c:
+            health = "busy"
+        elif backoff > 0:
+            health = "slow"
+        else:
+            health = "ok"
+
+        result[alias] = {
+            "running": running,
+            "queued": queued,
+            "retrying": retrying,
+            "available_concurrent": max(0, max_c - running),
+            "available_queue": max(0, max_q - total_pending),
+            "health": health,
+        }
+    return result
+
+
+def cmd_jobs(conn):
+    """List all active jobs (queued, waiting, running, retrying) with timing info."""
+    rows = conn.execute(
+        """SELECT id, model, status, label, retry_count, created_at, started_at
+           FROM requests
+           WHERE status IN ('queued', 'waiting', 'running', 'retrying')
+           ORDER BY created_at"""
+    ).fetchall()
+
+    now = time.time()
+    jobs = []
+    for row in rows:
+        # Reverse-lookup alias
+        alias = row["model"]
+        for a, m in CONFIG["models"].items():
+            if m == row["model"]:
+                alias = a
+                break
+
+        running_time = None
+        if row["status"] == "running" and row["started_at"]:
+            running_time = round(now - row["started_at"], 1)
+
+        jobs.append({
+            "id": row["id"],
+            "model": alias,
+            "status": row["status"],
+            "label": row["label"] or "",
+            "retry_count": row["retry_count"],
+            "running_time_s": running_time,
+            "created": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(row["created_at"])),
+        })
+    return jobs
+
+
+def cmd_pacing(conn):
+    """Show current adaptive pacing state per model."""
+    result = {}
+    for alias, model in CONFIG["models"].items():
+        row = conn.execute("SELECT * FROM pacing WHERE model=?", (model,)).fetchone()
+        if row:
+            result[alias] = {
+                "min_gap_ms": row["min_gap_ms"],
+                "backoff_ms": row["backoff_ms"],
+                "consecutive_ok": row["consecutive_ok"],
+                "total_ok": row["total_ok"],
+                "total_rate_limited": row["total_rate_limited"],
+            }
+    return result
+
+
+def _parse_last(last_str):
+    """Parse --last argument like '1h' or '24h' into seconds. Returns None for lifetime."""
+    if not last_str:
+        return None
+    last_str = last_str.strip().lower()
+    if last_str.endswith("h"):
+        return float(last_str[:-1]) * 3600
+    elif last_str.endswith("d"):
+        return float(last_str[:-1]) * 86400
+    elif last_str.endswith("m"):
+        return float(last_str[:-1]) * 60
+    else:
+        return float(last_str) * 3600  # Default to hours
+
+
+def cmd_stats(conn, last):
+    """Show historical performance stats per model. Raw data, no analysis."""
+    window_s = _parse_last(last)
+    cutoff = (time.time() - window_s) if window_s else 0
+
+    result = {"period": last or "lifetime"}
+
+    for alias, model in CONFIG["models"].items():
+        # All completed requests in window
+        rows = conn.execute(
+            """SELECT status, exit_code, created_at, started_at, finished_at, retry_count
+               FROM requests
+               WHERE model=? AND finished_at IS NOT NULL AND finished_at > ?""",
+            (model, cutoff)
+        ).fetchall()
+
+        if not rows:
+            result[alias] = {"total_jobs": 0}
+            continue
+
+        total = len(rows)
+        succeeded = sum(1 for r in rows if r["status"] == "done")
+        failed = sum(1 for r in rows if r["status"] == "failed")
+        cancelled = sum(1 for r in rows if r["status"] == "cancelled")
+
+        # Rate-limited attempts (sum of retry_counts gives total rate-limit events)
+        rate_limited_attempts = sum(r["retry_count"] for r in rows)
+
+        # Execution times (started_at → finished_at for completed jobs that ran)
+        exec_times = [
+            r["finished_at"] - r["started_at"]
+            for r in rows
+            if r["started_at"] and r["finished_at"]
+        ]
+
+        # Wait times (created_at → started_at)
+        wait_times = [
+            r["started_at"] - r["created_at"]
+            for r in rows
+            if r["started_at"] and r["created_at"]
+        ]
+
+        # Timeouts
+        timeouts = sum(1 for r in rows if r["exit_code"] == -1)
+
+        # p95 execution time
+        p95 = None
+        if exec_times:
+            sorted_times = sorted(exec_times)
+            p95_idx = min(int(len(sorted_times) * 0.95), len(sorted_times) - 1)
+            p95 = round(sorted_times[p95_idx], 1)
+
+        # Peak concurrent (estimate: count overlapping running windows)
+        peak = 0
+        running_windows = [
+            (r["started_at"], r["finished_at"])
+            for r in rows
+            if r["started_at"] and r["finished_at"]
+        ]
+        for i, (s1, e1) in enumerate(running_windows):
+            concurrent = 1
+            for j, (s2, e2) in enumerate(running_windows):
+                if i != j and s2 < e1 and e2 > s1:
+                    concurrent += 1
+            peak = max(peak, concurrent)
+
+        # Current pacing state
+        pacing = conn.execute("SELECT min_gap_ms FROM pacing WHERE model=?", (model,)).fetchone()
+
+        result[alias] = {
+            "total_jobs": total,
+            "succeeded": succeeded,
+            "failed": failed,
+            "cancelled": cancelled,
+            "rate_limited_attempts": rate_limited_attempts,
+            "success_rate": round(succeeded / total, 2) if total else 0,
+            "avg_execution_s": round(sum(exec_times) / len(exec_times), 1) if exec_times else None,
+            "avg_wait_s": round(sum(wait_times) / len(wait_times), 1) if wait_times else None,
+            "avg_retries": round(rate_limited_attempts / total, 1) if total else 0,
+            "p95_execution_s": p95,
+            "peak_concurrent": peak,
+            "timeouts": timeouts,
+            "current_min_gap_ms": pacing["min_gap_ms"] if pacing else None,
+        }
+
+    return result
+
+
+# ── Cancel command ─────────────────────────────────────
+
+def cmd_cancel(conn, job_id, model_alias):
+    """Cancel jobs by ID or by model. Kills running processes."""
+    cancelled = []
+
+    if job_id and job_id != "ALL":
+        # Cancel specific job by ID
+        try:
+            jid = int(job_id)
+        except ValueError:
+            return {"error": f"Invalid job ID: {job_id}"}
+        rows = conn.execute(
+            "SELECT id, status, pid FROM requests WHERE id=? AND status IN ('waiting', 'running', 'retrying')",
+            (jid,)
+        ).fetchall()
+    elif model_alias:
+        # Cancel all jobs for a model
+        model = CONFIG["models"].get(model_alias)
+        if not model:
+            return {"error": f"Unknown model: {model_alias}"}
+        rows = conn.execute(
+            "SELECT id, status, pid FROM requests WHERE model=? AND status IN ('waiting', 'running', 'retrying')",
+            (model,)
+        ).fetchall()
+    else:
+        return {"error": "Specify --cancel <id> or --cancel --model <alias>"}
+
+    for row in rows:
+        # Kill running processes
+        if row["status"] == "running" and row["pid"]:
+            try:
+                os.kill(row["pid"], signal.SIGTERM)
+                time.sleep(0.5)
+                try:
+                    os.kill(row["pid"], 0)  # Check if still alive
+                    time.sleep(4.5)  # Wait remaining 5s total
+                    os.kill(row["pid"], signal.SIGKILL)  # Force kill
+                except ProcessLookupError:
+                    pass  # Already dead
+            except ProcessLookupError:
+                pass  # Already dead
+
+        conn.execute(
+            "UPDATE requests SET status='failed', error='cancelled', finished_at=?, exit_code=-2 WHERE id=?",
+            (time.time(), row["id"])
+        )
+        cancelled.append(row["id"])
+
+    conn.commit()
+    return {"cancelled": cancelled, "count": len(cancelled)}
+
+
+if __name__ == "__main__":
+    main()

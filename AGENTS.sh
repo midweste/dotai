@@ -9,7 +9,7 @@ command -v rsync >/dev/null 2>&1 || { echo "Error: rsync not found." >&2; exit 1
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET_DIR="$SCRIPT_DIR"
 
-REPO_URL="git@github.com:thecleanbedroom/dotai.git"
+POLICY_REPO_URL="git@github.com:thecleanbedroom/dotai.git"
 REFERENCE="main"
 
 temp_dir="$(mktemp -d)"
@@ -20,10 +20,13 @@ trap cleanup EXIT
 
 
 cat <<INFO
-This script will clone the dotai policy repository and copy its contents into:
+This script will clone the dotai policy repository and sync rules/config into:
   $TARGET_DIR
-Existing files may be overwritten if they also exist upstream (except PROJECT.md and excluded Git folders),
-but local-only files will be preserved. Review the diff after it completes.
+
+Existing policy files may be overwritten (except PROJECT.md and Git folders).
+Local-only files will be preserved. Review the diff after it completes.
+
+To install skills, run the /build-skills workflow after syncing.
 INFO
 
 read -rp "Proceed with sync? [y/N] " confirm
@@ -32,9 +35,9 @@ if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
     exit 0
 fi
 
-printf 'Fetching %s (%s)\n' "$REPO_URL" "$REFERENCE"
-git clone --depth 1 --branch "$REFERENCE" "$REPO_URL" "$temp_dir/src" >/dev/null 2>&1 || {
-    echo "Error: git clone failed" >&2
+printf 'Fetching policy repo %s (%s)\n' "$POLICY_REPO_URL" "$REFERENCE"
+git clone --depth 1 --branch "$REFERENCE" "$POLICY_REPO_URL" "$temp_dir/policy" >/dev/null 2>&1 || {
+    echo "Error: git clone of policy repo failed" >&2
     exit 1
 }
 
@@ -44,6 +47,8 @@ rsync -av \
     --exclude '.github' \
     --exclude '.gitmodules' \
     --exclude 'PROJECT.md' \
-    "$temp_dir/src/" "$TARGET_DIR/"
+    --exclude '.agent/skills' \
+    "$temp_dir/policy/" "$TARGET_DIR/"
 
 echo 'Policy files synchronized. Review changes and commit as needed.'
+echo 'Run /build-skills to install project-specific skills.'

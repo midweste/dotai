@@ -1,9 +1,10 @@
 # PROJECT.md Generation Prompt
 
-You are generating [PROJECT.md] for this repository. This file is part of the [.ai/index.md] policy set and its instructions override other `.ai/rules/*` documents if there is a conflict.
+You are generating [PROJECT.md] for this repository. This file is part of the `.agent/rules/` policy set and its instructions override other `.agent/rules/*` documents if there is a conflict.
 
 ## Hard requirements
-- Do not reference or repeat any rules contained in [.ai/index.md]
+
+- Do not reference or repeat any rules contained in `.agent/rules/`
 - Inspect the repo to discover project facts. Do not guess. If a fact is not verifiable from the repo, label it as “Unknown” or “TBD”.
 - Do not include secrets. If you discover secrets committed in the repo (API keys, passwords, DSNs, webhooks), DO NOT repeat them in [PROJECT.md]. Instead:
   - state that a secret exists (without the value),
@@ -15,9 +16,10 @@ You are generating [PROJECT.md] for this repository. This file is part of the [.
   - no web URLs,
   - no `file://` URIs,
   - no absolute filesystem paths.
-  Use plain relative repo paths (examples: [.lando.yml], [web/wp-config.php]) and plain text placeholders (example: `<local-site-domain>`).
+    Use plain relative repo paths (examples: [.lando.yml], [web/wp-config.php]) and plain text placeholders (example: `<local-site-domain>`).
 
 ## What to include in PROJECT.md
+
 Create a concise but detailed document with sections like these (omit only if truly not applicable):
 
 1. Project Overview
@@ -65,6 +67,7 @@ Create a concise but detailed document with sections like these (omit only if tr
    - Notable “footguns” found in config (described without secrets)
 
 10. Do / Don’t Quick Rules
-   - Short repo-specific rules based on what you found (commands to use, paths to avoid, common mistakes)
+
+- Short repo-specific rules based on what you found (commands to use, paths to avoid, common mistakes)
 
 Now generate the complete [PROJECT.md] for this repo.
