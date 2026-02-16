@@ -60,17 +60,19 @@ ls -lh .agent/rules/ .agent/workflows/
 
 ### Cross-Cutting
 
-| #   | Question                                                                                                                                      |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| 19  | **Rule/workflow boundary** — Do any rules duplicate what a workflow orchestrates? Rules should define the _what_; workflows the _how_.        |
-| 20  | **Scope & portability** — Do any rules or workflows reference specific repos, file paths, or tools that won't exist in every project?         |
-| 21  | **Conditional activation** — Do platform/language rules document when to skip them? Are workflows scoped to the right contexts?               |
-| 22  | **Orphan references** — Do any rules or workflows reference files, workflows, or rules that don't exist? Cross-check all internal references. |
-| 23  | **Staleness** — Are any rules or workflows outdated (deprecated APIs, old patterns, stale cross-references)?                                  |
-| 24  | **Token budget** — Total size of all rule + workflow files in KB/tokens. Reasonable for agent context windows?                                |
-| 25  | **Pre-flight compliance** — Does the pre-flight rule clearly instruct agents to read all rule files? Any gaps?                                |
-| 26  | **Signal-to-noise** — Are there rules or workflows agents would likely ignore due to length, vagueness, or low relevance?                     |
-| 27  | **Sweep coverage** — Do all sweeps in `core-quality-assurance.md` map to a concrete declarative section?                                      |
+| #   | Question                                                                                                                                                                                                                                                                                                                                                           |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 19  | **Rule/workflow boundary** — Do any rules duplicate what a workflow orchestrates? Rules should define the _what_; workflows the _how_.                                                                                                                                                                                                                             |
+| 20  | **Scope & portability** — Do any rules or workflows reference specific repos, file paths, or tools that won't exist in every project?                                                                                                                                                                                                                              |
+| 21  | **Conditional activation** — Do platform/language rules document when to skip them? Are workflows scoped to the right contexts?                                                                                                                                                                                                                                    |
+| 22  | **Orphan references** — Do any rules or workflows reference files, workflows, or rules that don't exist? Cross-check all internal references.                                                                                                                                                                                                                      |
+| 23  | **Absolute paths** — Do any rules or workflows use `file://` URIs or absolute paths? All paths must be relative for portability.                                                                                                                                                                                                                                   |
+| 24  | **Staleness** — Are any rules or workflows outdated (deprecated APIs, old patterns, stale cross-references)?                                                                                                                                                                                                                                                       |
+| 25  | **Token budget** — Total size of all rule + workflow files in KB/tokens. Reasonable for agent context windows?                                                                                                                                                                                                                                                     |
+| 26  | **Pre-flight compliance** — Does the pre-flight rule clearly instruct agents to read all rule files? Any gaps?                                                                                                                                                                                                                                                     |
+| 27  | **Signal-to-noise** — Are there rules or workflows agents would likely ignore due to length, vagueness, or low relevance?                                                                                                                                                                                                                                          |
+| 28  | **Sweep coverage** — Do all sweeps in `core-quality-assurance.md` map to a concrete declarative section?                                                                                                                                                                                                                                                           |
+| 29  | **Plugin sync** — Is `.agent/index.md` content synced to all AI plugin configs? Diff each target against `index.md` and flag drift. Targets: `.gemini/styleguide.md`, `.github/copilot-instructions.md`, `.windsurf/rules/rules.md`, `.continue/rules/rules.md`, `.cursor/rules/policy.mdc` (has frontmatter), `.codex/config.toml` (TOML format), `.cursorrules`. |
 
 ---
 
@@ -101,7 +103,7 @@ ls -lh .agent/rules/ .agent/workflows/
 - Score: <A/B/C/D>
 
 ### Findings
-<table of all 27 questions with ✅/⚠️/❌ and explanation>
+<table of all 29 questions with ✅/⚠️/❌ and explanation>
 
 ### Recommendations
 <numbered list of specific actions>

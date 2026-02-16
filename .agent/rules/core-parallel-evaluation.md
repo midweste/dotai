@@ -15,7 +15,7 @@ This applies to **all work** — implementation, edits, analysis, research, test
 `run_command` dispatching to `.agent/bin/gemini-gateway` is the ONLY parallel mechanism.
 
 ```bash
-run_command(".agent/bin/gemini-gateway --model <quick|fast|think|deep> --label 'description' --prompt '...' --timeout <30|45|90>")
+run_command("echo '...' | .agent/bin/gemini-gateway --model <quick|fast|think|deep> --label 'description' --timeout <30|45|90>")
 ```
 
 ## Parallelism Decision
