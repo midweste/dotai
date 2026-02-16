@@ -36,14 +36,26 @@ git clone --depth 1 --branch "$REFERENCE" "$POLICY_REPO_URL" "$temp_dir/policy" 
 }
 
 printf 'Syncing policy files to %s\n' "$TARGET_DIR"
-rsync -av \
-    --exclude '.git' \
-    --exclude '.github' \
-    --exclude '.gitmodules' \
-    --exclude 'PROJECT.md' \
-    --exclude '.agent/skills' \
-    --exclude '.agent/dotai' \
-    "$temp_dir/policy/" "$TARGET_DIR/"
+
+# Sync only the directories and files we own — never touch project-local files
+SYNC_DIRS=".agent .codex .continue .cursor .gemini .github .windsurf"
+for dir in $SYNC_DIRS; do
+    if [ -d "$temp_dir/policy/$dir" ]; then
+        mkdir -p "$TARGET_DIR/$dir"
+        rsync -av \
+            --exclude '.agent/skills' \
+            --exclude '.agent/dotai' \
+            "$temp_dir/policy/$dir/" "$TARGET_DIR/$dir/"
+    fi
+done
+
+# Sync root-level files we own
+for file in AGENTS.sh AGENTS.md; do
+    if [ -f "$temp_dir/policy/$file" ]; then
+        cp "$temp_dir/policy/$file" "$TARGET_DIR/$file"
+        printf '  %s\n' "$file"
+    fi
+done
 
 echo 'Policy files synchronized. Review changes and commit as needed.'
 echo 'Run /add-skills to install project-specific skills.'
