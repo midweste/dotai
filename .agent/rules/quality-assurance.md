@@ -18,9 +18,9 @@
 
 ## Language-Specific Checks
 
-- PHP: run the project’s configured PHPUnit and static analysis (PHPStan/Psalm) commands—use repo scripts/config, not hard-coded defaults.
+- PHP: run the project's configured PHPUnit and static analysis (PHPStan/Psalm) commands—use repo scripts/config, not hard-coded defaults.
 - PHP: never commit PHPStan stub content into production source files; keep stubs in dedicated stub files/paths defined by the project config.
-- JS/CSS: run the project’s configured test and lint commands; use the repo’s package scripts and configs.
+- JS/CSS: run the project's configured test and lint commands; use the repo's package scripts and configs.
 
 ## Code & Design
 
@@ -60,26 +60,22 @@
 - Never display or echo secrets from files, env vars, or configs; redact with clear placeholders.
 - If a potential secret is detected, stop and notify the user to rotate it; do not copy it into responses.
 
-## Performance & Stability
+## Performance
 
 - Guard expensive operations with caching/transients where appropriate; avoid N+1 queries.
 - Keep external calls wrapped with timeouts/retries; avoid blocking the main request when not required.
-- Ensure deterministic tests and predictable time/clock usage (injected clocks).
+- Check database efficiency: indexes used for new queries; paginate large result sets.
+- Review assets: keep bundle sizes and critical CSS lean; compress/optimize images; ensure caching headers/versioning are in place.
+- Validate caching strategy: object cache/transients for repeat lookups; avoid per-request rewrite flushes; ensure cache keys are scoped and invalidated correctly.
+- Move heavy tasks to queues/cron where safe; ensure jobs are idempotent and bounded with timeouts/retries.
+- _(Suggest to user)_ Capture baselines: measure key flows for time, queries, and memory before/after changes using profiling tools.
+- _(Suggest to user)_ Confirm production settings disable verbose logging/debug; timeouts appropriate for upstream calls.
 
 ## Refactoring
 
 - When refactoring, always update the tests to match the new code.
 - When refactoring, always update the documentation to match the new code.
 - When refactoring, always ask if existing functions need a wrapper or can be replaced.
-
-## Performance Review
-
-- Capture baselines: measure key flows (page render, REST/AJAX endpoints, cron/queue jobs) for time, queries, and memory before/after changes.
-- Check database efficiency: no N+1s; indexes used for new queries; paginate large result sets.
-- Review assets: keep bundle sizes and critical CSS lean; compress/optimize images; ensure caching headers/versioning are in place.
-- Validate caching strategy: object cache/transients for repeat lookups; avoid per-request rewrite flushes; ensure cache keys are scoped and invalidated correctly.
-- Assess async/offline work: move heavy tasks to queues/cron where safe; ensure jobs are idempotent and bounded with timeouts/retries.
-- Confirm configuration: production settings disable verbose logging/debug; timeouts appropriate for upstream calls.
 
 ## Compatibility & Accessibility
 
@@ -97,39 +93,32 @@
 - Use structured logging; redact sensitive fields.
 - Add/align metrics or trace identifiers for new flows where meaningful.
 - Ensure error handling paths surface actionable messages without leaking stacks to users.
+- Ensure deterministic tests and predictable time/clock usage (use injected clocks where time-sensitive logic exists).
 
-## Verification Steps (suggest to run)
+## Verification Steps
 
 - Run full test suite and linters.
-- Exercise critical user paths manually (happy + edge cases).
-- Verify install/activate/uninstall flows for plugins; ensure rewrites not flushed per request.
+- _(Suggest to user)_ Exercise critical user paths manually (happy + edge cases).
+- _(Suggest to user)_ Verify install/activate/uninstall flows for plugins; ensure rewrites not flushed per request.
 
 ## Security Sweep
 
-Apply platform security checks across the codebase or a targeted scope:
+When asked for a **security sweep**, apply the Security & Privacy Governance section above end-to-end, plus:
 
-- Validate capability/nonce/authz on every state-changing action.
-- Audit input sanitization at every boundary (forms, REST, CLI, queue payloads).
-- Confirm output escaping at every render point (HTML, JSON, headers).
-- Verify all database access uses prepared statements or parameterized ORM queries.
-- Ensure secrets come from environment only — no hard-coded keys, DSNs, or tokens.
 - Scan recent changes (since last release/tag) for security regressions.
 - Add or update tests for any gaps found.
 
 ## Performance Sweep
 
-Review critical paths for efficiency and suggest concrete optimizations:
+When asked for a **performance sweep**, apply the Performance section above end-to-end, plus:
 
-- Identify N+1 query patterns; suggest eager-loading or batch queries.
-- Audit caching/transients/object cache usage; verify keys are scoped and invalidated correctly.
-- Check asset size and versioning (bundle sizes, critical CSS, image optimization).
 - Flag blocking external calls in the request lifecycle; suggest async/queue alternatives.
-- Capture before/after measurements where possible (query count, response time, memory).
+- _(Suggest to user)_ Capture before/after measurements where possible (query count, response time, memory).
 - Note any findings that require profiling tools the agent cannot run.
 
 ## TDD Sweep
 
-Apply test-driven development to the requested behavior:
+When asked for a **tdd sweep**:
 
 1. Write a failing test that describes the desired behavior.
 2. Implement the minimum code to make it pass.

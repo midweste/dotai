@@ -22,4 +22,4 @@
 ## Testing
 
 - Provide `npm test` or `npm run test:js` scripts that cover unit and integration cases; run tests in a browser-like environment (JSDOM/Karma) when DOM or jQuery is involved.
-- Mock WordPress globals (e.g., `wp.i18n`) when running tests outside the browser.
+- Favor browser-like test environments; mock platform globals only when required by the framework.

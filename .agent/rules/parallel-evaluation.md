@@ -1,11 +1,12 @@
 ---
-description: "CRITICAL: Always evaluate work for parallelism. Split into gateway agents via run_command whenever possible. You orchestrate and validate."
+description: "CRITICAL: All work MUST be parallelized. Never perform tasks sequentially when they can be dispatched concurrently. Always evaluate work for parallelism. Split into gateway agents via run_command whenever possible. You orchestrate and validate."
 ---
 
-## Mandatory Parallelism — Split First, Work Second
+# Parallel Evaluation
 
 > [!CAUTION]
-> **This is the highest-priority rule.** Before starting ANY work, evaluate whether it can be split into independent parallel tasks dispatched via `run_command` to the Gemini gateway. If it can be split, it MUST be split.
+>
+> CRITICAL: All work MUST be parallelized. Never perform tasks sequentially when they can be dispatched concurrently. Before starting ANY work, evaluate whether it can be split into independent parallel tasks dispatched via `run_command` to the Gemini gateway. If it can be split, it MUST be split.
 
 This applies to **all work** — code implementation, file edits, analysis, research, testing, and verification. Not just verification. You are the orchestrating agent: you dispatch, you work on your own tasks in parallel, and you validate the results that come back.
 

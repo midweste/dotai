@@ -1,5 +1,7 @@
 # WordPress Coding Rules
 
+> **Conditional**: Apply only when WordPress is detected (look for `wp-config.php`, `functions.php`, or `wp-content/` in the project). Skip this file entirely for non-WordPress projects.
+
 ## Important Guidelines
 
 1. **Security First**: Always sanitize input and escape output

@@ -1,5 +1,7 @@
 # Node.js Platform Rules
 
+> **Conditional**: Apply only when Node.js is detected (look for `package.json` with a `node` engine or `node_modules/` in the project). Skip this file entirely for non-Node projects.
+
 ## Runtime & Dependency Management
 
 - Target Node.js 20.x LTS unless project notes specify otherwise.
