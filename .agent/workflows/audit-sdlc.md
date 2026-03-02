@@ -78,6 +78,11 @@ Read-only steps → `// turbo`. Mutating/interactive steps → no turbo. `// tur
 
 All step references must use **named refs** (e.g., `/plan`'s _Write the source document_), not step numbers. Applies to cross-file (`/plan` step N) and internal (`step 8`, `steps 8`) references. Exclude template labels like `Step 1/3`.
 
+Additionally:
+
+- **Resolution**: Every named ref must resolve to an actual heading in the target workflow. Flag any dangling reference.
+- **Uniqueness**: No two step headings within the same workflow may share a name. Duplicate headings make references ambiguous. Flag any collisions.
+
 #### Check 11: Debt status guard
 
 Debt docs use `> Status: Draft` — never `> Status: Debt`. The `🗑️ Debt` emoji is a Progress table status only. Search for `Status: Debt` (exclude guard routing logic and Progress table definitions).
