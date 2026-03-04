@@ -6,6 +6,8 @@ Complement workflow rules. Apply to all code changes.
 
 - Stable interfaces at boundaries (functions, modules, components). Optional params over duplicated paths. Consistent error semantics.
 - When a method returns a collection that can be full or subset (filtered, paginated), use explicit naming (`getAllX()` vs `getFilteredX()`). Never leave the default ambiguous. When adding a filter to a data source, audit all consumers to verify they use the correct variant.
+- **Match file conventions**: before naming a new method, function, or variable, scan the file for the dominant convention (snake_case, camelCase, PascalCase). Match it exactly.
+- **Preserve comparison semantics**: when refactoring conditional logic, never change the type of comparison (partial → exact, case-sensitive → insensitive, allowlist → denylist) without calling out the behavioral difference and asking whether the change is intentional.
 
 ## Testing Strategy
 

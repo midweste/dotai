@@ -68,7 +68,7 @@ What was broken or needed changing. Include error messages, logs, or reproductio
 ### <Change Group Name>
 
 - What was changed and why
-- Link to affected files with [filename](file:///path)
+- Link to affected files with [filename](../path/to/file)
 
 ## Verification
 

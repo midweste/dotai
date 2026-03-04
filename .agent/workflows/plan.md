@@ -155,9 +155,9 @@ For each parallel group, specify dispatch strategy (read by `/implement`). Inclu
 
 **Gateway**: `.agent/bin/gemini-gateway`
 
-| Group | Phases | Model Tier | Timeout | Rationale      |
-| ----- | ------ | ---------- | ------- | -------------- |
-| A     | 1, 2   | fast       | 45s     | Simple changes |
+| Group | Phases | Model Tier | Rationale      |
+| ----- | ------ | ---------- | -------------- |
+| A     | 1, 2   | fast       | Simple changes |
 
 Tiers: `quick` / `fast` / `think` / `deep`. If all sequential, write: "No subagent dispatch needed."
 

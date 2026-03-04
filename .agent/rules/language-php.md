@@ -25,6 +25,7 @@
 - Controllers handle I/O; services handle business rules; repositories handle storage; utilities stay framework-agnostic.
 - Interfaces for cross-layer contracts. Co-locate tests with features when possible.
 - Never park feature logic in UI classes.
+- **Group class properties**: declare all class properties in the property block at the top of the class. Never declare properties inline next to the methods that use them.
 
 ## Namespace & Import Rules
 
