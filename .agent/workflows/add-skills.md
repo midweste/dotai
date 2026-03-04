@@ -206,3 +206,7 @@ Report to the user:
 | Skill      | Reason                                |
 | ---------- | ------------------------------------- |
 | skill-name | Why excluded despite seeming relevant |
+
+### Load installed skills
+
+After reporting, run `/skills` to read and evaluate the newly installed skills for the current task.
