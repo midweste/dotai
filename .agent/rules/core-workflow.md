@@ -25,7 +25,12 @@ Optimize for correctness, minimalism, and developer experience.
 Write checklists to `TODO.md`. Include verification tasks. Define acceptance criteria. Mark progress. Capture checkpoint notes. Add results section when done. Update `LESSONS.md` after corrections.
 
 - Enforce naming conventions at write-time. When augmenting an existing file, check if its filename follows the project's naming convention — don't defer to creation-time only.
-- Update progress tracking immediately after completing each phase — this is part of the phase's work, not a close-time cleanup task.
+- **Real-time progress tracking**: update progress **immediately after completing each step** — this is part of the step's work, not a close-time cleanup task. This applies to:
+  - Source doc Progress tables (mark phase ✅ Done)
+  - Brain task artifacts (mark checklist item `[x]`)
+  - Task boundary status/summary
+
+  Do NOT batch progress updates or defer them until the end.
 
 ## Communication
 

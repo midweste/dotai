@@ -108,6 +108,9 @@ If any dispatch returns exit code 2 (`QUEUE_FULL`): do that work yourself.
 
 **Between items**, briefly report progress (completed, next, blockers).
 
+> [!IMPORTANT]
+> **Update progress after each item** — mark the source doc Progress table `✅ Done`, update the brain task artifact checklist `[x]`, and update the task boundary summary. This is part of the item's work, not a batch operation at the end.
+
 ### Handle test failures
 
 - **Caused by your changes**: Fix inline as part of the current phase. Do NOT park as debt.
