@@ -29,19 +29,21 @@ If the clone fails, stop and tell the user.
 
 ### Extract frontmatter catalog
 
-One skill per line: `slug - description`
+One skill per line: `slug - description (NKB)`. Size includes all files in the skill folder.
 
 ```bash
 SKILLS_TMP=$(cat /tmp/.skills_tmp_path)
 python3 -c "
-import os, re
+import os, re, subprocess
 
 base = os.path.join('$SKILLS_TMP', 'skills')
 lines = []
 for name in sorted(os.listdir(base)):
-    skill_md = os.path.join(base, name, 'SKILL.md')
+    skill_dir = os.path.join(base, name)
+    skill_md = os.path.join(skill_dir, 'SKILL.md')
     if not os.path.isfile(skill_md):
         continue
+    total_size = int(subprocess.check_output(['du', '-sb', skill_dir]).split()[0])
     desc = ''
     with open(skill_md) as f:
         content = f.read(2000)
@@ -58,11 +60,12 @@ for name in sorted(os.listdir(base)):
             if line and not line.startswith('#') and not line.startswith('---'):
                 desc = line[:150]
                 break
-    lines.append(f'{name} - {desc}')
+    size_kb = f'{total_size/1024:.1f}KB'
+    lines.append(f'{name} - {desc} ({size_kb})')
 
 with open('/tmp/.skills_catalog.txt', 'w') as f:
     f.write('\n'.join(lines) + '\n')
-print(f'Catalog: {len(lines)} skills, one per line')
+print(f'Catalog: {len(lines)} skills')
 "
 ```
 

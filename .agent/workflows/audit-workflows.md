@@ -137,12 +137,12 @@ Scan all rule and workflow files for `file:///` URIs or absolute filesystem path
 
 Read workflows with `named_refs`. Verify referencing workflows don't also contain inline copies of the same logic. Canonical owners:
 
-| Concern                                                                 | Owner         |
-| ----------------------------------------------------------------------- | ------------- |
-| Evaluate skills                                                         | `/skills`     |
-| Append walkthrough, Finalize, Move to finished, Create debt doc, Report | `/close`      |
-| Clone skills repo, Extract catalog                                      | `/add-skills` |
-| Smell checklist, Logging format                                         | `/sniff`      |
+| Concern                                                                 | Owner           |
+| ----------------------------------------------------------------------- | --------------- |
+| Evaluate skills                                                         | `/skills`       |
+| Append walkthrough, Finalize, Move to finished, Create debt doc, Report | `/close`        |
+| Clone skills repo, Extract catalog                                      | `/skillsfinder` |
+| Smell checklist, Logging format                                         | `/sniff`        |
 
 Flag parallel definitions of the same concern without a reference relationship.
 

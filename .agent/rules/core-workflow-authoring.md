@@ -7,11 +7,11 @@ Rules for writing and modifying `.agent/workflows/` files.
 - **No step numbers in headings**: Use descriptive names (`### Run tests`), not numbered names (`### 3. Run tests`). Document order defines execution order. Numbers create maintenance overhead when steps are inserted or reordered.
 - **Named step references, not numbers**: Cross-reference steps by name (e.g., "Follow `/close`'s _Move to finished_ step"), never by step number.
 - **Cross-references must resolve**: Every named reference (e.g., `/close`'s _Move to finished_) must point to an actual heading in the target workflow. Dangling references cause agent confusion.
-- **DRY — reference, don't redefine**: If a step already exists in another workflow, reference it instead of duplicating the instructions. One-liner references like "Follow `/add-skills`'s _Clone skills repo to tmp_ step" are preferred over inline code blocks that repeat the same logic.
+- **DRY — reference, don't redefine**: If a step already exists in another workflow, reference it instead of duplicating the instructions. One-liner references like "Follow `/skillsfinder`'s _Clone skills repo to tmp_ step" are preferred over inline code blocks that repeat the same logic.
 - **Canonical ownership**: Each shared concern has one canonical workflow that owns its definition. Other workflows reference it. If you need to override behavior, say "Follow X with these overrides:" and list only the differences. Known owners:
   - Evaluate skills → `/skills`
   - Append walkthrough, Finalize, Move to finished, Create debt doc, Report → `/close`
-  - Clone skills repo, Extract catalog → `/add-skills`
+  - Clone skills repo, Extract catalog → `/skillsfinder`
   - Smell checklist, Logging format → `/sniff`
 - **Platform-agnostic language**: Workflows must not contain hardcoded commands, language-specific patterns, or tool-specific names. Use generic terms ("run the test suite", "run static analysis") and let `.agent/rules/platform-*.md` or `language-*.md` supply the specifics.
 - **Unique step names**: Every step heading within a workflow must be unique. Duplicate names make references ambiguous.
