@@ -65,17 +65,6 @@ Read what the user provided (description, existing doc, or debt doc). For existi
 
 Identify: **Goal**, **Scope**, **Constraints**, **Referenced code**. If intent is unclear, batch all questions into one ask.
 
-### Research the codebase (deep)
-
-// turbo
-
-Investigate actual code for each area the plan touches. **Do NOT make assumptions** — verify everything.
-
-- Read relevant files, classes, interfaces; check for existing patterns
-- **Trace construction sites**: find all instantiation/injection points for modified classes
-- **Trace internal deps**: for moved methods, verify dependencies exist on destination
-- **Identify affected tests**: search for tests that mock/instantiate/assert on changed classes
-
 ### Ensure a source doc exists (stub only)
 
 // turbo
@@ -100,6 +89,18 @@ The source doc is the permanent record that lives in `docs/`. At this stage, cre
 Use datetime-prefixed naming: `docs/YYYY-MM-DDTHHMM--<slug>.md`
 
 That's it — just frontmatter and the requirement. Full planning sections come in _Write the source document_.
+
+### Research the codebase (deep)
+
+// turbo
+
+Investigate actual code for each area the plan touches. **Do NOT make assumptions** — verify everything.
+
+- Read relevant files, classes, interfaces; check for existing patterns
+- **Trace construction sites**: find all instantiation/injection points for modified classes
+- **Trace internal deps**: for moved methods, verify dependencies exist on destination
+- **Identify affected tests**: search for tests that mock/instantiate/assert on changed classes
+- **Sniff while you research**: apply `/sniff`'s _Smell checklist_ to files you read. Log findings to the source doc's `## Debt` section using `/sniff`'s _Logging format_.
 
 ### Create the implementation plan artifact
 

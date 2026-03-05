@@ -10,8 +10,9 @@ Rules for writing and modifying `.agent/workflows/` files.
 - **DRY — reference, don't redefine**: If a step already exists in another workflow, reference it instead of duplicating the instructions. One-liner references like "Follow `/add-skills`'s _Clone skills repo to tmp_ step" are preferred over inline code blocks that repeat the same logic.
 - **Canonical ownership**: Each shared concern has one canonical workflow that owns its definition. Other workflows reference it. If you need to override behavior, say "Follow X with these overrides:" and list only the differences. Known owners:
   - Evaluate skills → `/skills`
-  - Append walkthrough, Finalize, Move to finished, Report → `/close`
+  - Append walkthrough, Finalize, Move to finished, Create debt doc, Report → `/close`
   - Clone skills repo, Extract catalog → `/add-skills`
+  - Smell checklist, Logging format → `/sniff`
 - **Platform-agnostic language**: Workflows must not contain hardcoded commands, language-specific patterns, or tool-specific names. Use generic terms ("run the test suite", "run static analysis") and let `.agent/rules/platform-*.md` or `language-*.md` supply the specifics.
 - **Unique step names**: Every step heading within a workflow must be unique. Duplicate names make references ambiguous.
 - **Globally unique referenced headings**: If a step heading is cross-referenced by other workflows, it must be unique across all workflow files. Two workflows defining the same heading name creates ambiguous references. Generic headings never used as cross-reference targets (e.g., "Summary", "Report") are exempt.

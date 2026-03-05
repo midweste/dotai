@@ -1,10 +1,10 @@
 ---
-description: Audit all workflows against core-workflow-authoring rules for structural quality
+description: "Audit all workflows against core-workflow-authoring rules for structural quality"
 ---
 
-# /audit-workflows — Audit Workflow Structural Quality
+# /audit-workflows — Audit Workflow Quality
 
-Scan every workflow in `.agent/workflows/` against the rules in `.agent/rules/core-workflow-authoring.md`. Report and fix violations.
+Scan all `.agent/workflows/` files for structural issues, DRY violations, SDLC pipeline consistency, and broken conventions.
 
 **Input**: None — reads all workflow files automatically
 **Output**: Audit report with findings and fixes applied
@@ -13,15 +13,13 @@ Scan every workflow in `.agent/workflows/` against the rules in `.agent/rules/co
 
 ## Steps
 
-### Load all workflows and authoring rules
+### Load rules and workflows
 
-Read `.agent/rules/core-workflow-authoring.md` to load the active ruleset.
-
-Read every `.md` file in `.agent/workflows/`. For each, extract headings, step references, code blocks, turbo annotations, and descriptions.
+Read `.agent/rules/core-workflow-authoring.md` and every `.md` file in `.agent/workflows/`.
 
 ### Extract structural data
 
-Run this extraction script to produce machine-readable data for the mechanical checks. Review the output before proceeding.
+Run this for machine-readable data powering the mechanical checks:
 
 ```bash
 cd .agent/workflows && python3 -c "
@@ -33,35 +31,21 @@ for fname in sorted(os.listdir('.')):
     if not fname.endswith('.md'): continue
     with open(fname) as f:
         content = f.read()
-
-    # Frontmatter
-    desc = ''
     fm = re.match(r'^---\s*\n(.*?)\n---', content, re.DOTALL)
+    desc = ''
     if fm:
         for line in fm.group(1).splitlines():
             if 'description:' in line.lower():
                 desc = line.split(':', 1)[1].strip().strip('\"').strip(\"'\")[:100]
-
-    # Headings
     headings = [m.group(1).strip() for m in re.finditer(r'^#{3,}\s+(.+)$', content, re.MULTILINE)]
-
-    # Turbo
     has_turbo_all = '// turbo-all' in content
     turbo_lines = [i for i, l in enumerate(content.splitlines(), 1) if l.strip() == '// turbo']
-
-    # Named cross-refs
     named_refs = re.findall(r'\x60/(\w[\w-]*)\x60(?:\'s|\u2019s)?\s+_([^_]+)_', content)
-
-    # Step number refs (outside code blocks, inline code, and YAML frontmatter)
     stripped = re.sub(r'^---\s*\n.*?\n---', '', content, flags=re.DOTALL)
     non_code = re.sub(r'\x60\x60\x60.*?\x60\x60\x60', '', stripped, flags=re.DOTALL)
     non_code = re.sub(r'\x60[^\x60]+\x60', '', non_code)
     step_nums = re.findall(r'\bsteps?\s+(\d[\d,-]*)\b', non_code, re.IGNORECASE)
-
-    # Numbered headings (N. prefix)
     numbered_headings = [h for h in headings if re.match(r'^\d+\.', h)]
-
-    # Platform terms (outside code blocks)
     platform_hits = []
     for pat in [r'\bmake\s+(?:phpstan|test|lint|build|deploy|install|artisan[\w-]*)\b',
                 r'\bnpm\s+(?:test|run)\b', r'\bcomposer\s+(?:install|require|update)\b',
@@ -70,128 +54,151 @@ for fname in sorted(os.listdir('.')):
                 r'\bLaravel\b', r'\bRails\b', r'\bDjango\b', r'\bReact\b']:
         for m in re.finditer(pat, non_code):
             platform_hits.append(m.group())
-
-    # Classify steps for turbo audit
     step_classes = []
     for h in headings:
         hl = h.lower()
-        safe = any(w in hl for w in ['read', 'load', 'scan', 'extract', 'verify', 'list', 'run test', 'clone', 'clean'])
-        unsafe = any(w in hl for w in ['present', 'approve', 'review', 'ask', 'iterate', 'report'])
+        safe = any(w in hl for w in ['read','load','scan','extract','verify','list','run test','clone','clean','create','ensure','mark','capture','inventory','write','evaluate','consolidate','research','act','handle'])
+        unsafe = any(w in hl for w in ['present','approve','review','ask','iterate','report'])
         step_classes.append({'name': h, 'safe': safe, 'unsafe': unsafe})
-
     data[fname] = {
         'desc': desc, 'headings': headings, 'has_turbo_all': has_turbo_all,
         'turbo_lines': turbo_lines, 'named_refs': [{'wf': r[0], 'step': r[1]} for r in named_refs],
         'step_nums': step_nums, 'numbered_headings': numbered_headings,
         'platform_hits': platform_hits, 'step_classes': step_classes
     }
-
 print(json.dumps(data, indent=2))
 "
 ```
 
-This gives you structured data for every workflow. Use it to power the mechanical checks below.
+### Run checks
 
-### Run structural checks
+Checks marked **(M)** are mechanical — run against extraction data. Checks marked **(AI)** require reading actual content.
 
-Checks 1–3, 5–6, 8–10 are **mechanical** — run them against the extracted data. Checks 4 and 7 require **AI reasoning** — read the actual workflow content and compare semantically.
+---
 
-#### Check 1: Unique step headings
+#### Check 1 (M): Heading uniqueness
 
-Every heading within a single workflow must be unique. Duplicate headings make cross-references ambiguous.
+- **Within file**: flag duplicate headings (case-insensitive) in any single workflow
+- **Across files**: collect headings that are cross-referenced by other workflows. Flag if two different workflows define the same heading. Exempt generic headings never used as cross-ref targets (e.g., "Steps", "Summary")
 
-From the extraction data, flag any workflow where the `headings` array contains duplicates (case-insensitive).
+#### Check 2 (M): Step references use names, not numbers
 
-#### Check 2: Global heading uniqueness for referenced steps
+From `step_nums` field. Any non-empty value is a violation. Exclude: YAML description fields with `Step N/3`, this audit workflow's own examples.
 
-Across all workflows, collect step headings that are referenced by other workflows. If two different workflows define identically named steps, references become ambiguous. Flag collisions.
+#### Check 3 (M): Cross-reference resolution
 
-Exclude generic headings that are never cross-referenced (e.g., "Steps", "Output", "Summary").
+For each `named_refs` entry, verify the target heading exists in the target workflow. Flag dangling refs and missing workflows.
 
-#### Check 3: Step references use names, not numbers
+#### Check 4 (M): Frontmatter and labels
 
-From the extraction data, check the `step_nums` field for each workflow. Any non-empty value is a violation.
+- Every workflow must have a non-empty YAML `description`
+- SDLC workflows: description must start with `SDLC Step N/3 —`, `SDLC Shortcut —`, or `SDLC Meta —`. Verify numbering is sequential.
+- Status reads must target `> Status:` frontmatter, not body text
+- Filenames: `YYYY-MM-DDTHHMM` format. Frontmatter dates: `YYYY-MM-DD HH:MM (local)`. Flag deviations.
 
-Exclude these false positives (the extraction script already strips code blocks):
+#### Check 5 (M): Platform-agnostic language
 
-- YAML `description` fields containing `Step N/3`
-- `## Steps` section headers followed by numbered list items
-- Example text describing what a violation looks like (e.g., inside this audit workflow)
+From `platform_hits` field. Flag non-empty values. Exclude meta-examples that describe what violations look like. Use generic: "test suite", "static analysis".
 
-#### Check 4: No inline redefinition of shared steps (AI reasoning)
+#### Check 6 (M): Turbo annotations
 
-**This check requires reading actual workflow content, not just extraction data.**
+From `has_turbo_all`, `turbo_lines`, `step_classes`:
 
-For each workflow that contains named cross-references (check the `named_refs` field), read both the referencing workflow and the target workflow. Verify the referencing workflow doesn't also contain an inline copy of the same logic (bash script, template, or process description).
-
-The canonical owner is the workflow that defines the step in the most detail. Others should reference it with a one-liner.
-
-#### Check 5: Platform-agnostic language
-
-From the extraction data, check the `platform_hits` field. Flag any non-empty values.
-
-Exclude: code blocks that are genuinely platform-agnostic infrastructure (e.g., `git clone`, `mkdir`, `python3 -c` for scripting utilities). The extraction script already filters to non-code sections.
-
-Acceptable: generic terms like "test suite", "static analysis", "linter", "run the project's tests".
-
-#### Check 6: Cross-reference resolution
-
-For each named ref in the extraction data, verify the target heading exists in the target workflow's headings array. Flag dangling references.
-
-#### Check 7: Canonical ownership consistency (AI reasoning)
-
-**This check requires reading actual workflow content, not just extraction data.**
-
-Scan for patterns where two or more workflows contain inline definitions for the same concern (e.g., "move to finished", "append walkthrough", "evaluate skills"). The canonical owner should have the full definition; others should reference it.
-
-**Known canonical owners:**
-
-| Concern                                                | Owner         |
-| ------------------------------------------------------ | ------------- |
-| Evaluate skills                                        | `/skills`     |
-| Append walkthrough, Finalize, Move to finished, Report | `/close`      |
-| Clone skills repo, Extract catalog                     | `/add-skills` |
-
-Flag: parallel definitions of the same concern without a reference relationship.
-
-#### Check 8: Frontmatter completeness
-
-From the extraction data, flag any workflow where `desc` is empty.
-
-#### Check 9: turbo annotation audit
-
-From the extraction data, combine `has_turbo_all`, `turbo_lines`, and `step_classes` to evaluate:
-
-- **Dangerous turbo** (High): `// turbo` on steps classified as `unsafe` (interactive/approval steps)
+- **Dangerous turbo** (High): `// turbo` on steps classified as `unsafe`
 - **Redundant turbo** (Low): Individual `// turbo` when `// turbo-all` is set
-- **Missing turbo-all** (Medium): All steps classified as `safe` but no `// turbo-all`
-- **Missing individual turbo** (Low): Safe steps without `// turbo` in workflows that don't have `// turbo-all`
+- **Missing turbo-all** (Medium): All steps safe but no `// turbo-all`
 
-Report per workflow:
+#### Check 7 (M): Step numbering convention
 
-| Workflow | turbo-all? | Steps | Safe | Unsafe | Missing turbo | Redundant |
-| -------- | ---------- | ----- | ---- | ------ | ------------- | --------- |
+From `numbered_headings`. Any non-empty value is a violation — use descriptive names, not `### 3. Run tests`.
 
-#### Check 10: Step numbering convention
+#### Check 8 (M): Skills loading
 
-From the extraction data, check the `numbered_headings` field. Any non-empty value is a violation — step headings should use descriptive names without number prefixes.
+- Every workflow needing skill evaluation should reference `/skills`'s _Evaluate skills_ with a one-liner. Flag inline copies.
+- _Evaluate skills_ must appear **before** any substantive work step (research, scanning, implementing). Flag violations as Medium.
 
-#### Check 11: Evaluate skills boilerplate
+#### Check 9 (AI): Canonical ownership and DRY
 
-Every workflow that needs skill evaluation should reference `/skills`'s _Evaluate skills_ step with a one-liner. Flag any workflow that contains an inline copy of the evaluate-skills bash script or instructions instead of the reference.
+Read workflows with `named_refs`. Verify referencing workflows don't also contain inline copies of the same logic. Canonical owners:
+
+| Concern                                                                 | Owner         |
+| ----------------------------------------------------------------------- | ------------- |
+| Evaluate skills                                                         | `/skills`     |
+| Append walkthrough, Finalize, Move to finished, Create debt doc, Report | `/close`      |
+| Clone skills repo, Extract catalog                                      | `/add-skills` |
+| Smell checklist, Logging format                                         | `/sniff`      |
+
+Flag parallel definitions of the same concern without a reference relationship.
+
+#### Check 10 (AI): Document template quality
+
+Workflows creating documents must use consistent templates:
+
+- **Debt docs**: must reference `/close`'s _Create debt doc_ step. Must use `> Status: Debt`. Must include `## Requirement` with actionable items.
+- **Source docs**: must include `> Status:` and `> Created:` frontmatter.
+- **Status values**: every `> Status:` value written must be accepted by at least one downstream workflow's routing table. Flag orphaned statuses.
+
+#### Check 11 (AI): SDLC pipeline integrity
+
+**Status lifecycle**: `Draft → Planned → Approved → In Progress → Done → finished/`
+
+| Workflow     | Accepts                     | Outputs       | Next accepts    |
+| ------------ | --------------------------- | ------------- | --------------- |
+| `/plan`      | Draft, Debt, Planned, none  | `Approved`    | `/implement` ✅ |
+| `/implement` | Approved, In Progress       | `In Progress` | `/close` ✅     |
+| `/close`     | In Progress, Done (unfiled) | `Done`        | (terminal)      |
+| `/capture`   | (self-contained)            | `Done`        | (terminal)      |
+| `/hotfix`    | (self-contained)            | `Done`        | (terminal)      |
+
+Verify: outputs match next workflow's accepts, guard redirects name exact commands, every SDLC workflow has `## SDLC Pipeline` block with "You are here" marker.
+
+#### Check 12 (AI): Link rebasing and test policy
+
+- Every workflow moving to `finished/` must rebase relative links. Verify `/capture` and `/hotfix` reference `/close`'s step.
+- All test/analysis gates must require **all failures fixed** — including pre-existing. Flag "note but don't fix" language.
+
+#### Check 13 (AI): Document pluggability
+
+For each doc type (source docs, debt docs), trace creation → consumption path. Verify consumer can pick up the doc without user formatting. Flag format mismatches.
+
+---
 
 ### Report findings
 
 | #   | Check | File | Issue | Severity |
 | --- | ----- | ---- | ----- | -------- |
-| 1   | Name  | file | desc  | H/M/L    |
 
-Severity: **High** = agent would do the wrong thing (broken ref, dangerous turbo). **Medium** = DRY violation, inconsistency, or missing turbo-all. **Low** = style or suggestion.
+Severity: **High** = wrong agent action. **Medium** = DRY violation, inconsistency. **Low** = style.
 
 ### Fix issues
 
-Fix all High and Medium. Present Low for user review. Re-run the extraction script and all checks to confirm no regressions.
+Fix all High and Medium. Present Low for user review. Re-run extraction and all checks to confirm no regressions.
+
+### Dry-run walkthrough
+
+Simulate end-to-end SDLC, verifying each handoff:
+
+1. User describes feature → `/plan` _Capture the intent_ → no doc, description input ✅
+2. `/plan` _Ensure a source doc exists (stub only)_ → stub with `Draft`. Template matches `/implement` expectations?
+3. `/plan` _Create the implementation plan artifact_ → has all sections `/implement` references?
+4. `/plan` _Present for review_ / _Iterate until approved_ → user iterates
+5. `/plan` _Write the source document_ → full doc with Proposal, Reconciliation, Decisions
+6. `/plan` _Mark as approved_ → `Approved`. `/implement` accepts? ✅
+7. `/implement` _Load the document and plan_ → reads doc + artifact. Missing artifact handling?
+8. `/implement` _Mark the source document and initialize progress tracking_ → Progress table from Proposal phases
+9. `/implement` _Report completion_ → `/close` accepts `In Progress`? ✅
+10. `/close` _Load and verify_ → Progress table all terminal?
+11. `/close` _Append walkthrough to the source document_ → references source doc data?
+12. `/close` _Move to finished_ → rebase links ✅
+
+**Edge cases**: mid-plan interrupt (stub + artifact, `Draft`), resume `/implement` (`In Progress`, scans for `⬜ Ready`), debt flow (`Debt` → `/plan` accepts, created via canonical step, `## Requirement` usable?), `/capture` bypass (produces `finished/`-ready doc?).
+
+Flag any broken handoff.
+
+### Self-audit
+
+Verify this workflow is current: dry-run uses named refs, edge cases are realistic, checks cover all active conventions, workflow list matches actual files.
 
 ### Summary
 
-Report: total checks run, total workflows scanned, issues by severity, issues fixed, remaining items needing user decision.
+Report: total checks, workflows scanned, issues by severity, issues fixed, remaining items.

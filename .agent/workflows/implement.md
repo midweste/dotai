@@ -110,6 +110,8 @@ If any dispatch returns exit code 2 (`QUEUE_FULL`): do that work yourself.
 
 > [!IMPORTANT]
 > **Update progress after each item** — mark the source doc Progress table `✅ Done`, update the brain task artifact checklist `[x]`, and update the task boundary summary. This is part of the item's work, not a batch operation at the end.
+>
+> **Sniff while you implement**: apply `/sniff`'s _Smell checklist_ to files you touched and their neighbors. Append any findings to the source doc's `## Debt` section using `/sniff`'s _Logging format_.
 
 ### Handle test failures
 

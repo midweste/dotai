@@ -95,22 +95,12 @@ Create a prioritized list of files to test, sorted by **uncovered statements** (
 
 ### Triage each file for code smells (BEFORE writing tests)
 
-For each file in the priority queue, **read it first** and check for code smells:
-
-**Smell checklist:**
-
-- [ ] Dead code (methods never called, `@deprecated` with no callers)
-- [ ] Duplicated logic between files
-- [ ] Wrong abstraction (concrete types where interfaces should be, god class, etc.)
-- [ ] Tangled dependencies (constructor with 8+ params, circular calls)
-- [ ] Magic strings/numbers everywhere
-- [ ] Method does 3+ unrelated things
-- [ ] Commented-out code blocks
+For each file in the priority queue, **read it first** and apply `/sniff`'s _Smell checklist_ (structural smells only — security, performance, and risk categories are not relevant here).
 
 **If smells are found:**
 
 1. **Skip testing the file** — don't write tests for smelly code
-2. Create a debt doc: `docs/YYYY-MM-DDTHHMM--coverage-debt-<slug>.md` with `> Status: Debt`
+2. Follow `/close`'s _Create debt doc_ step — set source to `/testcoverage triage` and describe the smell in the Requirement
 3. Log the skip with reason in the progress table
 4. Move to next file
 

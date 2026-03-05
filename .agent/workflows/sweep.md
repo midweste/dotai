@@ -1,26 +1,13 @@
 ---
-description: Sweep the codebase for improvement opportunities — naming, structure, duplication, debt, friction — and produce a prioritized doc
+description: "Sweep the codebase for improvement opportunities — naming, structure, duplication, debt, friction — and produce a prioritized doc"
 ---
 
-# Codebase Sweep
+# /sweep — Codebase Sweep
 
-Produce a prioritized list of improvement ideas based on what you observe in the codebase, your experience working in it, and standard best practices. The output is a doc that can be fed into `/plan` for implementation.
+Active, deliberate scan of the codebase for issues. Applies `/sniff`'s _Smell checklist_ exhaustively and runs verification tooling (tests, linters, coverage). Produces a prioritized findings doc.
 
-## What to Look For
-
-1. **Naming inconsistencies** — methods, classes, files, or directories that don't follow the dominant convention in their area. Things that would make a newcomer guess wrong.
-
-2. **Misplaced code** — logic living in the wrong layer or location. Controllers doing business logic, services doing presentation work, config in the wrong directory, utilities that belong in a shared location. Also look for flat directories with too many files that should be grouped into subdirectories by concern.
-
-3. **Duplication** — similar patterns implemented differently across the codebase. Near-identical classes, copy-pasted logic, parallel hierarchies that could be unified.
-
-4. **Unclear boundaries** — overlapping responsibilities between classes or modules. When it's not obvious which one owns a concern, or when a class does too many things.
-
-5. **Friction points** — things that make working in the codebase harder than it needs to be. Non-obvious conventions, missing abstractions, code you have to read 5 files to understand.
-
-6. **Unaddressed debt** — existing debt docs, TODO comments, skipped tests, or known issues that haven't been resolved.
-
-7. **Standards gaps** — deviations from the project's own rules (`.agent/rules/`), framework best practices, or widely-accepted principles (SOLID, DRY, etc.).
+**Input**: Optional scope (module, directory, feature area).
+**Output**: Findings doc in `docs/`, actionable as `/plan` input.
 
 ## Steps
 
@@ -28,46 +15,182 @@ Produce a prioritized list of improvement ideas based on what you observe in the
 
 Follow `/skills`'s _Evaluate skills_ step.
 
-1. **Understand the project.** Read [PROJECT.md] and scan the codebase structure. Identify the platform, custom code areas, and conventions already in place.
+### Understand the project
 
-2. **Load rules.** Read all `.agent/rules/` files — these define the project's own standards and are the primary benchmark for the sweep. Use rules and active skills (from _Evaluate skills_) as the lens for evaluating the codebase.
+// turbo
 
-3. **Review knowledge and history.** Check knowledge items, conversation history, and `docs/finished/` for known debt, past decisions, and recurring friction.
+Read PROJECT.md and scan the codebase structure. Identify the platform, custom code areas, and conventions in place. Read all `.agent/rules/` files — these define the project's standards and are the primary benchmark.
 
-4. **Walk the custom code.** Focus on application code, not framework scaffolding or vendor. For each area, evaluate against the "What to Look For" list above.
+### Review knowledge and history
 
-5. **Write the sweep report** to `docs/` following the project's doc naming convention. Structure:
+// turbo
 
-   ```markdown
-   # Codebase Sweep — <date>
+Check knowledge items, conversation history, and `docs/finished/` for known debt, past decisions, and recurring friction.
 
-   ## Summary
+---
 
-   Brief overview of findings and overall health impression.
+### Structural scan
 
-   ## Findings
+Walk the custom code (not framework/vendor). Apply `/sniff`'s _Smell checklist_ systematically. Expand each finding into the full-detail format (richer than `/sniff`'s terse _Logging format_ table):
 
-   ### [Category: e.g., Naming, Duplication, Misplaced Code]
+```markdown
+#### Finding title
 
-   #### Finding title
+- **Where**: relative path(s)
+- **Smell**: category from sniff checklist
+- **What**: what you observed
+- **Why it matters**: impact on readability, maintainability, or correctness
+- **Suggested fix**: concrete, actionable suggestion
+- **Effort**: low / medium / high
+```
 
-   - **Where**: relative path(s)
-   - **What**: what you observed
-   - **Why it matters**: impact on readability, maintainability, or efficiency
-   - **Suggested fix**: concrete, actionable suggestion
-   - **Effort**: low / medium / high
+---
 
-   ...repeat for each finding...
+### QA verification
 
-   ## Prioritized Recommendations
+Run the project's verification tooling to establish a baseline. Use repo-standard commands (check Makefile, package.json scripts, or framework conventions).
 
-   Top items ordered by impact-to-effort ratio. Each should be actionable as a `/plan` input.
-   ```
+#### Run test suite
 
-6. **Present** the report for review via `notify_user`.
+Run the project's tests. Record pass/fail status and any failures.
+
+#### Run static analysis
+
+Run the project's linters and type checkers. Record clean/warning/error status.
+
+#### Security sweep
+
+Apply `/sniff`'s _Security smells_ checklist exhaustively. Additionally:
+
+- Scan recent changes for security regressions
+- Verify anti-forgery tokens on state-changing endpoints
+- Check that new env vars are in both `.env` and `.env.example`
+- Verify no secrets in source, logs, or prompts
+
+#### Performance sweep
+
+Apply `/sniff`'s _Performance smells_ checklist exhaustively. Additionally:
+
+- Flag blocking external calls in request path
+- Verify cache keys are scoped and invalidated correctly
+- Note findings that require profiling tools for confirmation
+
+#### Compatibility and accessibility
+
+- Confirm browser/runtime targets and polyfills
+- WCAG AA contrast checks
+- `prefers-reduced-motion` guards on animations
+
+#### Documentation and ops
+
+- README/PROJECT updated if commands or behavior changed
+- Migrations, env vars, and release risks documented
+- Observability: structured logging, redacted sensitive fields, actionable error messages
+
+#### Cleanup
+
+Remove temporary files/fixtures (test caches, `*.bak`, debug output, scratch scripts). Verify no unintended files via `git status` (read-only — never stage, commit, or reset).
+
+---
+
+### Risk analysis
+
+Identify the highest-risk code by combining complexity and coverage data.
+
+#### Run coverage
+
+Run the project's test suite with coverage enabled. Parse the coverage report to get per-file and per-method statistics.
+
+> [!IMPORTANT]
+> Use whatever coverage format the project generates (Clover XML, Istanbul JSON, lcov, etc.). The exact command depends on the platform — check Makefile targets and test configuration.
+
+#### Identify high-risk methods
+
+For each method/function with coverage data, evaluate:
+
+- **Complexity**: cyclomatic complexity, nesting depth, method length
+- **Coverage**: percentage of statements covered by tests
+- **Risk score**: high complexity + low coverage = highest risk
+
+**Risk formula concept** (CRAP): `risk = complexity² × (1 - coverage)³ + complexity`
+
+Threshold for "needs attention": risk score ≥ 30 (or project-defined threshold).
+
+#### Categorize by fix strategy
+
+For each high-risk method, read the source and categorize:
+
+- **Category A — Test-fixable**: Complex but structurally sound. Adding tests reduces risk without code changes.
+- **Category B — Refactor-needed**: Too complex, needs structural refactoring. Extract method, extract class, or replace conditional with polymorphism.
+- **Category C — Skip**: Complex due to framework requirements, CLI commands, boot/config logic. Not worth optimizing.
+
+#### Prioritize by impact
+
+Sort actionable methods (A + B) by:
+
+1. Risk score (highest = most dangerous)
+2. Change frequency — higher churn + high risk = top priority
+3. Blast radius — methods called from many places are riskier than isolated ones
+
+---
+
+### Write the sweep report
+
+Create the report doc in `docs/` using standard naming:
+
+```markdown
+# Codebase Sweep — <date>
+
+> Created: YYYY-MM-DD HH:MM (local)
+> Status: Draft
+
+## Summary
+
+Brief overview of findings and overall health impression.
+
+## QA Baseline
+
+| Check           | Status   | Issues |
+| --------------- | -------- | ------ |
+| Tests           | ✅/❌    | count  |
+| Static analysis | ✅/⚠️/❌ | count  |
+| Security        | ✅/⚠️/❌ | count  |
+| Performance     | ✅/⚠️/❌ | count  |
+| Compatibility   | ✅/⚠️/❌ | count  |
+| Docs & Ops      | ✅/⚠️/❌ | count  |
+
+## Structural Findings
+
+### [Category: e.g., Naming, SRP, Security]
+
+#### Finding title
+
+- **Where**: relative path(s)
+- **Smell**: category
+- **What**: observation
+- **Why it matters**: impact
+- **Suggested fix**: concrete suggestion
+- **Effort**: low / medium / high
+
+## Risk Analysis
+
+### High-Risk Methods (CRAP ≥ 30)
+
+| Method | File | Risk | Complexity | Coverage | Strategy |
+| ------ | ---- | ---- | ---------- | -------- | -------- |
+
+## Prioritized Recommendations
+
+Top items by impact-to-effort ratio, each actionable as a `/plan` input.
+```
+
+### Present for review
+
+Present the report via `notify_user`. User decides which items to plan.
 
 ## Scoping
 
 - If the user specifies a scope (module, directory, feature area), limit the sweep to that area.
-- If no scope is given, sweep the entire custom codebase but keep findings actionable — don't produce a 200-item list. Focus on the highest-impact items.
-- Aim for 10–20 findings max. Quality over quantity.
+- If no scope given, sweep the entire custom codebase but keep findings actionable — don't produce a 200-item list.
+- Aim for 10–20 structural findings max. Quality over quantity.
+- Risk analysis: show all methods above threshold, but prioritize the top 10.

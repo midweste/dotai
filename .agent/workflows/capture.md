@@ -69,6 +69,7 @@ What was broken or needed changing. Include error messages, logs, or reproductio
 
 - What was changed and why
 - Link to affected files with [filename](../path/to/file)
+- Apply `/sniff`'s _Smell checklist_ to touched files; log findings to a `## Debt` section using `/sniff`'s _Logging format_
 
 ## Verification
 

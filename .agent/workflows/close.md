@@ -104,41 +104,53 @@ Check whether new files/methods created during implementation lack test coverage
 
 ### Code smell sweep
 
-Quick scan of touched files and neighbors for smells: duplicated logic, dead code, wrong abstraction, magic values, missing interface methods.
-
-For each smell: create a **separate debt doc** in `docs/` with `> Status: Draft`. One doc per issue.
+Review the `## Debt` section accumulated during `/plan` and `/implement` (via `/sniff`'s _Smell checklist_). Quick-scan any touched files not yet covered. For each new finding, append to the debt table.
 
 > [!IMPORTANT]
 > **Do NOT fix smells inline during close** — that's scope creep. File as debt, announce to user, move on.
 
-If none found, skip.
+If no debt section exists (older docs), run a focused `/sniff` on the files listed in the Progress table.
 
-### Create the debt document (if needed)
+### Create debt doc
 
-When items were parked (Progress table) or smells filed (_Code smell sweep_):
+Canonical step for creating debt documents. Referenced by other workflows that discover debt.
 
 // turbo
 
-Create a sister doc with same slug + `-debt` suffix. Datetime prefix uses the **current time** (when debt is filed), not the parent doc's timestamp.
+Create a doc in `docs/` using datetime-prefixed naming: `docs/YYYY-MM-DDTHHMM--<slug>.md`
+
+When called from `/close`, use the parent doc's slug + `-debt` suffix.
 
 ```markdown
-# <Original Title> — Remaining Debt
+# <Title>
 
 > Created: YYYY-MM-DD HH:MM (local)
-> Status: Draft
-> Parent: <link to original document in finished/>
+> Status: Debt
+> Source: <where this debt was discovered — e.g., /close of <parent doc>, /sniff scan, /testcoverage triage>
 
 ## Requirement
 
 ### <Item Name>
 
-- **What**: <originally planned>
-- **Why parked**: <reason>
-- **Needed**: <what must happen>
+- **What**: <what needs to change>
+- **Why**: <why it's debt — smell category, risk, or reason it was parked>
+- **Needed**: <what must happen to resolve>
 - **Priority**: High | Medium | Low
+- **Effort**: Low | Medium | High
+
+### <Additional items...>
+
+## Evidence
+
+<Optional: supporting data — sniff findings table, coverage stats, code excerpts, CRAP scores>
 ```
 
-Debt docs stay in active `docs/` — ready for `/plan`.
+**Key rules:**
+
+- Status is always `Debt` — this signals `/plan` and `/hotfix` that it's ready for action
+- Each item in `## Requirement` must be self-contained — enough context to plan without re-researching
+- `## Evidence` is optional supporting data, not a substitute for clear requirements
+- Debt docs stay in active `docs/` — ready for `/plan` or `/hotfix`
 
 ### Append walkthrough to the source document
 
