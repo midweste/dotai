@@ -22,9 +22,13 @@ Execute an approved planning document item by item. Supports resuming across con
 
 Follow `/skills`'s _Evaluate skills_ step.
 
+### Resolve input
+
+Follow `/plan`'s _Resolve Input_ step.
+
 ### Load the document and plan
 
-**If a source doc path was provided**, read it and check the frontmatter `> Status:` line:
+Read the resolved source doc and check the frontmatter `> Status:` line:
 
 - **`Approved`**: Fresh start — set status to `In Progress` and begin
 - **`In Progress`**: Resuming — scan the `## Progress` section (see _Mark the source document and initialize progress tracking_) to identify what's already done vs remaining
@@ -32,15 +36,6 @@ Follow `/skills`'s _Evaluate skills_ step.
 - **`Debt`**: Tell user: "This is a debt doc. Run `/plan` to plan the work."
 - **`Done`**: Tell user: "This doc is already done. Run `/close` to file it."
 - **Anything else**: Tell user: "Unknown status. Check the `> Status:` line."
-
-**If no source doc was provided** (e.g., `/implement` invoked from conversation after an in-chat `/plan`):
-
-1. Check if an implementation plan artifact exists in the brain directory
-2. If it does, **create the source doc first** using the same structure as `/plan`'s _Write the source document_ step — this is the permanent record in `docs/`. Use datetime-prefixed naming: `docs/YYYY-MM-DDTHHMM--<slug>.md`. Populate it from the implementation plan artifact. Set status to `Approved`.
-3. If no artifact exists either, tell user: "No plan found. Run `/plan` first."
-
-> [!IMPORTANT]
-> **The source doc must exist before any code is touched.** If planning happened in conversation without writing the doc, `/implement` writes it as its first action.
 
 If an implementation plan artifact exists in the brain directory, load it to understand the reconciliation and work plan. If not, create one using the same structure as `/plan`'s _Create the implementation plan artifact_ step.
 

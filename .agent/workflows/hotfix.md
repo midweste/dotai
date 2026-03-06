@@ -24,10 +24,15 @@ Runs `/plan` → `/implement` → `/close` in one pass with no review gates. Use
 
 Follow `/skills`'s _Evaluate skills_ step.
 
+### Resolve input
+
+Follow `/plan`'s _Resolve Input_ step.
+
 ### Plan
 
 Follow `/plan` with these overrides:
 
+- **Skip** _Resolve input_ — already resolved above
 - **Skip** _Present for review_ and _Iterate until approved_ — no review gate
 - **Do NOT ask clarifying questions** unless the fix could go in two genuinely different directions with different consequences. Make reasonable assumptions and state them.
 - Keep research tight — you already know it's a small fix
@@ -36,6 +41,7 @@ Follow `/plan` with these overrides:
 
 Follow `/implement` with these overrides:
 
+- **Skip** _Resolve input_ — already resolved
 - **Skip** parallelism triage — small fix, sequential only
 - **Skip** _Report completion_ review invitation — no review gate
 
@@ -43,6 +49,7 @@ Follow `/implement` with these overrides:
 
 Follow `/close` with these overrides:
 
+- **Skip** _Resolve input_ — already resolved
 - **Skip** _Test new code_ and _Code smell sweep_ — small fix, no debt filing needed
 
 ### Report

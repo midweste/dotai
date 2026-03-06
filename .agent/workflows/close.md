@@ -6,7 +6,7 @@ description: "SDLC Step 3/3 — Close a completed planning document by appending
 
 Finalize a completed planning document: append walkthrough, create debt doc for parked items, and move to `finished/` with a finish-time filename.
 
-**Input**: Planning doc path (status must be `In Progress`)
+**Input**: Planning doc path, description, or conversation context (via _Resolve Input_)
 **Output**: Walkthrough appended, debt doc if needed, source doc moved to `finished/`
 
 ## SDLC Pipeline
@@ -22,9 +22,13 @@ Finalize a completed planning document: append walkthrough, create debt doc for 
 
 Follow `/skills`'s _Evaluate skills_ step.
 
+### Resolve input
+
+Follow `/plan`'s _Resolve Input_ step.
+
 ### Load and verify
 
-Read the target document. Check the frontmatter `> Status:` line:
+Read the resolved source doc. Check the frontmatter `> Status:` line:
 
 - **`In Progress`**: Proceed with closing
 - **`Done` but not in `finished/`**: Proceed — just needs filing (skip to _Move to finished_)

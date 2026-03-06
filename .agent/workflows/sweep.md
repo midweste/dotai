@@ -6,14 +6,18 @@ description: "Sweep the codebase for improvement opportunities — naming, struc
 
 Active, deliberate scan of the codebase for issues. Applies `/sniff`'s _Smell checklist_ exhaustively and runs verification tooling (tests, linters, coverage). Produces a prioritized findings doc.
 
-**Input**: Optional scope (module, directory, feature area).
-**Output**: Findings doc in `docs/`, actionable as `/plan` input.
+**Input**: Optional scope, existing sweep doc to continue, or conversation context.
+**Output**: Findings doc in `docs/` using `/plan`'s _Canonical Document Format_.
 
 ## Steps
 
 ### Evaluate skills
 
 Follow `/skills`'s _Evaluate skills_ step.
+
+### Resolve input
+
+Follow `/plan`'s _Resolve Input_ step. This allows sweeps to resume an existing sweep doc, start from a description, or start from conversation context.
 
 ### Understand the project
 
@@ -31,17 +35,17 @@ Check knowledge items, conversation history, and `docs/finished/` for known debt
 
 ### Structural scan
 
-Walk the custom code (not framework/vendor). Apply `/sniff`'s _Smell checklist_ systematically. Expand each finding into the full-detail format (richer than `/sniff`'s terse _Logging format_ table):
+Walk the custom code (not framework/vendor). Apply `/sniff`'s _Smell checklist_ systematically. Record each finding using the standard requirement item fields:
 
 ```markdown
 #### Finding title
 
-- **Where**: relative path(s)
-- **Smell**: category from sniff checklist
 - **What**: what you observed
-- **Why it matters**: impact on readability, maintainability, or correctness
-- **Suggested fix**: concrete, actionable suggestion
-- **Effort**: low / medium / high
+- **Where**: relative path(s)
+- **Why**: impact on readability, maintainability, or correctness
+- **How**: concrete, actionable suggestion
+- **Priority**: High | Medium | Low
+- **Effort**: Low | Medium | High
 ```
 
 ---
@@ -134,16 +138,13 @@ Sort actionable methods (A + B) by:
 
 ---
 
-### Write the sweep report
+### Write the sweep doc
 
-Create the report doc in `docs/` using standard naming:
+Write findings into the resolved source doc. Each finding becomes a requirement item under `## Requirement` using `/plan`'s _Canonical Document Format_ item fields. Order items by impact-to-effort ratio (highest value first).
+
+Add sweep-specific sections **below** `## Requirement`:
 
 ```markdown
-# Codebase Sweep — <date>
-
-> Created: YYYY-MM-DD HH:MM (local)
-> Status: Draft
-
 ## Summary
 
 Brief overview of findings and overall health impression.
@@ -159,34 +160,17 @@ Brief overview of findings and overall health impression.
 | Compatibility   | ✅/⚠️/❌ | count  |
 | Docs & Ops      | ✅/⚠️/❌ | count  |
 
-## Structural Findings
-
-### [Category: e.g., Naming, SRP, Security]
-
-#### Finding title
-
-- **Where**: relative path(s)
-- **Smell**: category
-- **What**: observation
-- **Why it matters**: impact
-- **Suggested fix**: concrete suggestion
-- **Effort**: low / medium / high
-
 ## Risk Analysis
 
 ### High-Risk Methods (CRAP ≥ 30)
 
 | Method | File | Risk | Complexity | Coverage | Strategy |
 | ------ | ---- | ---- | ---------- | -------- | -------- |
-
-## Prioritized Recommendations
-
-Top items by impact-to-effort ratio, each actionable as a `/plan` input.
 ```
 
 ### Present for review
 
-Present the report via `notify_user`. User decides which items to plan.
+Present the report via `notify_user`. User decides which items to act on.
 
 ## Scoping
 

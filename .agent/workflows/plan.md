@@ -17,6 +17,50 @@ Research the codebase, reconcile intent against reality, surface questions, and 
 
 **Key principle**: The artifact is the working draft; the source doc is the final record. All iteration happens on the artifact. Source doc is written only after approval.
 
+## Canonical Document Format
+
+Every workflow creates and consumes this format. This is the single source of truth for doc structure.
+
+```markdown
+# <Title>
+
+> Created: YYYY-MM-DD HH:MM (local)
+> Status: Draft
+
+## Requirement
+
+### <Item Title>
+
+- **What**: what needs to change
+- **Where**: file(s) or area affected
+- **Why**: why it matters — impact, risk, or motivation
+- **How**: concrete, actionable suggestion
+- **Priority**: High | Medium | Low
+- **Effort**: Low | Medium | High
+
+### <Additional items...>
+```
+
+**Naming**: `docs/YYYY-MM-DDTHHMM--<slug>.md`
+
+**Status flow**: `Draft` → `Planned` → `Approved` → `In Progress` → `Done`
+
+**`## Requirement` is a list of items.** Each item is an `h3` with structured fields. All fields are optional — include what's known, omit what isn't.
+
+## Resolve Input
+
+Universal first step for every workflow. Determines the source doc to work against.
+
+// turbo
+
+| Input | Action |
+|-------|--------|
+| **Existing doc** | Validate frontmatter, use as source doc. If filename doesn't follow `YYYY-MM-DDTHHMM--<slug>.md`, rename using `> Created:` datetime. |
+| **Description** | Create new doc using _Canonical Document Format_ with description as `## Requirement` items. |
+| **No explicit input** | Scan conversation context (files edited, commands run, topics discussed). Create doc or locate existing in-progress doc in `docs/`. |
+
+Result: **a resolved doc path.** All subsequent steps use this path.
+
 ## Steps
 
 ### Evaluate skills
@@ -27,30 +71,22 @@ Follow `/skills`'s _Evaluate skills_ step.
 
 // turbo
 
-When multiple source docs are provided, **combine them into a single planning doc and delete the originals** before doing anything else:
+When multiple source docs are provided, **combine them into a single doc using the _Canonical Document Format_ and delete the originals** before doing anything else:
 
 1. Read all input docs
-2. Create a new consolidated doc with its own slug describing the combined scope:
-
-```markdown
-# <Consolidated Title>
-
-> Created: YYYY-MM-DD HH:MM (local)
-> Status: Draft
-
-## Requirement (Original)
-
-<summarize the combined intent across all source docs>
-```
-
+2. Create a new consolidated doc with its own slug describing the combined scope, using the _Canonical Document Format_. Merge all requirement items under `## Requirement`.
 3. Delete the original source docs — their content is absorbed into the new one
 4. Continue the remaining steps using the consolidated doc as the single input
 
 If only one doc (or a chat description) is provided, skip this step.
 
+### Resolve input
+
+Follow _Resolve Input_ to obtain the source doc path.
+
 ### Capture the intent
 
-Read what the user provided (description, existing doc, or debt doc). For existing docs, check frontmatter `> Status:`:
+Read the resolved source doc. Check frontmatter `> Status:`:
 
 | Status              | Action                                            |
 | ------------------- | ------------------------------------------------- |
@@ -64,31 +100,6 @@ Read what the user provided (description, existing doc, or debt doc). For existi
 **Do NOT augment the source doc yet** — read for context only. Source doc is written in _Write the source document_. For small fixes already done, use `/capture` instead.
 
 Identify: **Goal**, **Scope**, **Constraints**, **Referenced code**. If intent is unclear, batch all questions into one ask.
-
-### Ensure a source doc exists (stub only)
-
-// turbo
-
-The source doc is the permanent record that lives in `docs/`. At this stage, create only a minimal stub if one doesn't already exist. **Do not add planning sections yet.**
-
-**If a source doc already exists**: Leave its content as-is. Do not modify it. However, if the filename does not follow datetime-prefixed naming (`docs/YYYY-MM-DDTHHMM--<slug>.md`), rename it now using the `> Created:` datetime from its frontmatter.
-
-**If no source doc exists** (user gave a description in chat): Create a stub:
-
-```markdown
-# <Title>
-
-> Created: YYYY-MM-DD HH:MM (local)
-> Status: Draft
-
-## Requirement (Original)
-
-<paste the user's original requirement or description here>
-```
-
-Use datetime-prefixed naming: `docs/YYYY-MM-DDTHHMM--<slug>.md`
-
-That's it — just frontmatter and the requirement. Full planning sections come in _Write the source document_.
 
 ### Research the codebase (deep)
 
