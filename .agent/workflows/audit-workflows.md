@@ -25,9 +25,6 @@ Run this for machine-readable data powering the mechanical checks:
 cd .agent/workflows && python3 -c "
 import os,re,json
 data={}
-safe_words='read|load|scan|extract|verify|list|run test|clone|clean|create|ensure|mark|capture|inventory|write|evaluate|consolidate|research|act|handle|resolve|populate|fix'
-unsafe_words='present|approve|review|ask|iterate|report'
-platform_pats=[r'\bmake\s+(?:phpstan|test|lint|build|deploy|install|artisan[\w-]*)\b',r'\bnpm\s+(?:test|run)\b',r'\bcomposer\s+(?:install|require|update)\b',r'\bpytest\b',r'\bbundle\s+exec\b',r'\bPHPStan\b',r'\bESLint\b',r'\bRuboCop\b',r'\bPylint\b',r'\bLaravel\b',r'\bRails\b',r'\bDjango\b',r'\bReact\b']
 for fn in sorted(f for f in os.listdir('.') if f.endswith('.md')):
   c=open(fn).read()
   fm=re.match(r'^---\s*\n(.*?)\n---',c,re.DOTALL)
@@ -39,21 +36,18 @@ for fn in sorted(f for f in os.listdir('.') if f.endswith('.md')):
   s=re.sub(r'^---\s*\n.*?\n---','',c,flags=re.DOTALL)
   nc=re.sub(r'\x60{3}.*?\x60{3}','',s,flags=re.DOTALL)
   nc=re.sub(r'\x60[^\x60]+\x60','',nc)
-  ph=[m.group() for p in platform_pats for m in re.finditer(p,nc)]
-  sc=[{'name':h,'safe':bool(re.search(safe_words,h,re.I)),'unsafe':bool(re.search(unsafe_words,h,re.I))} for h in hd]
   data[fn]={'desc':desc,'headings':hd,'has_turbo_all':'// turbo-all' in c,
     'turbo_lines':[i for i,l in enumerate(c.splitlines(),1) if l.strip()=='// turbo'],
     'named_refs':[{'wf':r[0],'step':r[1]} for r in re.findall(r'\x60/(\w[\w-]*)\x60(?:\'s|\u2019s)?\s+_([^_]+)_',c)],
     'step_nums':re.findall(r'\bsteps?\s+(\d[\d,-]*)\b',nc,re.I),
-    'numbered_headings':[h for h in hd if re.match(r'^\d+\.',h)],
-    'platform_hits':ph,'step_classes':sc}
+    'numbered_headings':[h for h in hd if re.match(r'^\d+\.',h)]}
 print(json.dumps(data,indent=2))
 "
 ```
 
 ### Run checks
 
-**(M)** = mechanical (extraction data). **(AI)** = requires reading content.
+**(M)** = mechanical (extraction data). **(AI)** = requires reading content and applying judgment.
 
 ---
 
@@ -76,15 +70,24 @@ For each `named_refs`, verify target heading exists in target workflow. Flag dan
 - SDLC workflows: description starts with `SDLC Step N/3 —`, `SDLC Shortcut —`, or `SDLC Meta —`
 - Status reads target `> Status:` frontmatter. Filenames: `YYYY-MM-DDTHHMM`. Dates: `YYYY-MM-DD HH:MM (local)`.
 
-#### Platform-agnostic language (M)
+#### Platform-agnostic language (AI)
 
-From `platform_hits`. Non-empty = flag. Exclude meta-examples. Use generic: "test suite", "static analysis".
+Read each workflow's full content — including code blocks, examples, and inline references. Evaluate: **does this workflow contain platform-specific or language-specific commands, code, examples, or terminology that would make it non-portable?**
 
-#### Turbo annotations (M)
+Flag any workflow that hardcodes framework-specific commands (`make artisan-test`), language-specific code (PHP parsers, Python scripts for app logic), tool-specific patterns (`PHPUnit`, `Jest`), or framework names used prescriptively (not as meta-examples).
 
-- **Dangerous turbo** (High): `// turbo` on `unsafe` steps
-- **Redundant turbo** (Low): individual `// turbo` with `// turbo-all`
-- **Missing turbo-all** (Medium): all steps safe but no `// turbo-all`
+Exempt: meta-examples showing what a pattern *looks like* (e.g., audit pattern lists), and workflows whose purpose is inherently platform-specific (e.g., if a `platform-laravel.md` workflow existed). Use generic alternatives: "run the test suite", "run static analysis", "follow project conventions".
+
+#### Turbo annotations (M + AI)
+
+Mechanical detection from `turbo_lines` and `has_turbo_all`:
+
+- **Redundant turbo** (Low): individual `// turbo` lines present alongside `// turbo-all`
+- **Missing turbo-all** (Low): no `// turbo-all` when it could be appropriate
+
+AI evaluation for safety:
+
+- **Dangerous turbo** (High): For each step with `// turbo`, read the step's actual content and evaluate whether auto-execution is safe. A step is unsafe if it presents results for user review, asks for approval, requires iteration on feedback, or makes destructive changes without guardrails. Do not rely on step name keywords alone — evaluate from context.
 
 #### Step numbering convention (M)
 
@@ -173,13 +176,13 @@ Simulate full SDLC path verifying each handoff:
 
 | Step | Check |
 |------|-------|
-| `/plan` _Resolve Input_ → doc with `Draft` | Doc created using canonical format? |
-| `/plan` _Create implementation plan artifact_ | Has all sections `/implement` needs? |
-| `/plan` _Present_ → _Iterate_ → _Write source doc_ → _Mark approved_ | Status = `Approved`, `/implement` accepts? |
-| `/implement` _Resolve input_ → _Load document_ | Reads doc + artifact correctly? |
-| `/implement` _Progress tracking_ → _Report completion_ | `/close` accepts `In Progress`? |
+| `/plan` _Resolve input_ → doc with `Draft` | Doc created using canonical format? |
+| `/plan` _Create the implementation plan artifact_ | Has all sections `/implement` needs? |
+| `/plan` _Present for review_ → _Iterate until approved_ → _Write the source document_ → _Mark as approved_ | Status = `Approved`, `/implement` accepts? |
+| `/implement` _Resolve input_ → _Load the document and plan_ | Reads doc + artifact correctly? |
+| `/implement` _Mark the source document and initialize progress tracking_ → _Report completion_ | `/close` accepts `In Progress`? |
 | `/close` _Resolve input_ → _Load and verify_ | Progress all terminal? |
-| `/close` _Walkthrough_ → _Move to finished_ | Links rebased? |
+| `/close` _Append walkthrough to the source document_ → _Move to finished_ | Links rebased? |
 
 **Edge cases**: mid-plan interrupt (stub + artifact, `Draft`), resume `/implement` (`In Progress`, scans `⬜ Ready`), debt flow (`Debt` → `/plan`), `/capture` bypass (finished-ready?), **sweep→hotfix→close** (standard doc throughout, no orphan).
 

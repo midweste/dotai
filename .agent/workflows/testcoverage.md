@@ -6,7 +6,7 @@ description: "Systematically raise code coverage to a target (default 80%) by tr
 
 Raise code coverage to a target percentage by analyzing the coverage report, triaging uncovered files for code quality, and writing tests in impact order (largest gaps first, main paths before edge cases).
 
-**Input**: Optional target percentage (default: 80%). Optional module filter (e.g., `RetailRocket`).
+**Input**: Optional target percentage (default: 80%). Optional module filter.
 **Output**: New test files, debt docs for smelly code, coverage at or near target.
 
 ## Philosophy
@@ -26,56 +26,11 @@ Follow `/skills`'s _Evaluate skills_ step.
 
 // turbo
 
-Run the full test suite with coverage enabled. Parse the coverage output to identify the baseline.
+Run the full test suite with coverage enabled. Consult `.agent/rules/platform-*.md` and the project's Makefile/scripts to determine the correct test command and coverage format.
 
-```bash
-# Run tests and generate coverage
-make artisan-test   # or equivalent (check Makefile first)
-```
+Parse the coverage output (Clover XML, lcov, Istanbul JSON, or equivalent) to extract per-file coverage. Sort by **uncovered statements descending** (biggest gaps first). Record the baseline overall percentage.
 
-After tests pass, parse the **Clover XML** coverage report (faster than HTML):
-
-```bash
-# Extract per-file coverage from Clover XML
-php -r "
-\$xml = simplexml_load_file('tests/results/coverage.xml');
-\$files = [];
-foreach (\$xml->project->package as \$pkg) {
-    foreach (\$pkg->file as \$file) {
-        \$metrics = \$file->metrics;
-        \$total = (int)\$metrics['statements'];
-        \$covered = (int)\$metrics['coveredstatements'];
-        \$pct = \$total > 0 ? round(\$covered / \$total * 100, 1) : 100;
-        \$files[] = ['file' => (string)\$file['name'], 'pct' => \$pct, 'total' => \$total, 'uncovered' => \$total - \$covered];
-    }
-}
-// Also check for files directly under project (no package)
-foreach (\$xml->project->file as \$file) {
-    \$metrics = \$file->metrics;
-    \$total = (int)\$metrics['statements'];
-    \$covered = (int)\$metrics['coveredstatements'];
-    \$pct = \$total > 0 ? round(\$covered / \$total * 100, 1) : 100;
-    \$files[] = ['file' => (string)\$file['name'], 'pct' => \$pct, 'total' => \$total, 'uncovered' => \$total - \$covered];
-}
-// Sort by uncovered statements descending (biggest gaps first)
-usort(\$files, fn(\$a, \$b) => \$b['uncovered'] <=> \$a['uncovered']);
-// Print as table
-printf(\"%-60s %6s %6s %8s\n\", 'FILE', 'COV%', 'TOTAL', 'UNCOV');
-printf(\"%s\n\", str_repeat('-', 82));
-\$totalStatements = 0; \$totalCovered = 0;
-foreach (\$files as \$f) {
-    \$basename = basename(\$f['file']);
-    \$dir = basename(dirname(\$f['file']));
-    printf(\"%-60s %5.1f%% %6d %8d\n\", \$dir.'/'.\$basename, \$f['pct'], \$f['total'], \$f['uncovered']);
-    \$totalStatements += \$f['total'];
-    \$totalCovered += \$f['total'] - \$f['uncovered'];
-}
-\$overall = \$totalStatements > 0 ? round(\$totalCovered / \$totalStatements * 100, 1) : 0;
-printf(\"\n=== OVERALL: %s%% (%d/%d statements) ===\n\", \$overall, \$totalCovered, \$totalStatements);
-" 2>/dev/null
-```
-
-Record the baseline coverage percentage and list of uncovered files.
+**Output needed:** a table of files with coverage %, total statements, and uncovered statements.
 
 ### Build the coverage priority queue
 
@@ -83,8 +38,8 @@ Create a prioritized list of files to test, sorted by **uncovered statements** (
 
 **Exclude from testing:**
 
-- Config files, service providers, facades (low value)
-- Migration files
+- Config files, framework bootstrapping, and boilerplate (low value)
+- Migration / schema files
 - Files with < 5 uncovered statements (diminishing returns)
 
 **Priority tiers:**
@@ -123,42 +78,24 @@ Read the file and identify:
 
 #### Check for existing tests
 
-```bash
-# Find existing test coverage for this file
-grep -rn "ClassName" Tests/Integration/ --include='*.php' | head -5
-```
-
-If a test file already exists, **extend it** rather than creating a new one.
+Search the test directory for existing tests covering the target class or module. If a test file already exists, **extend it** rather than creating a new one.
 
 #### Write the test
 
-Follow project testing conventions:
+Follow the project's testing conventions. Before writing, **read existing test files in the same directory** to discover:
 
-- Use `PHPUnit\Framework\Attributes\Test` attribute style
-- Use Mockery for mocking
-- Follow the same patterns as existing test files (check neighbors)
-- Use the `TestCase` base class from the module
+- Test framework and assertion style
+- Base class / test utilities
+- Mocking patterns
+- Naming conventions
 
-**Test structure per file:**
-
-```php
-#[Test]
-public function itDoesMainThing(): void          // happy path
-#[Test]
-public function itHandlesErrorCase(): void       // primary errors
-#[Test]
-public function itHandlesEdgeCase(): void        // edge cases (after breadth)
-```
+Match what you find — don't impose a different style.
 
 #### Run tests after each batch
 
 // turbo
 
-After writing tests for each batch (1–3 files), run the full test suite:
-
-```bash
-make artisan-test
-```
+After writing tests for each batch (1–3 files), run the full test suite to confirm nothing is broken.
 
 **If tests fail:**
 
@@ -170,11 +107,11 @@ make artisan-test
 
 Maintain a progress table (in conversation or artifact) showing:
 
-| File                 | Statements | Covered | Status           | Notes                   |
-| -------------------- | ---------- | ------- | ---------------- | ----------------------- |
-| WooConnection.php    | 200        | 45%     | ✅ Tests written | +8 tests                |
-| MagentoProduct.php   | 150        | 30%     | 🗑️ Debt          | Dead code in buildQuery |
-| StoreSyncService.php | 80         | 60%     | ✅ Tests written | +4 tests                |
+| File              | Statements | Covered | Status           | Notes                   |
+| ----------------- | ---------- | ------- | ---------------- | ----------------------- |
+| `ConnectionSvc`   | 200        | 45%     | ✅ Tests written | +8 tests                |
+| `ProductMapper`   | 150        | 30%     | 🗑️ Debt          | Dead code in buildQuery |
+| `SyncService`     | 80         | 60%     | ✅ Tests written | +4 tests                |
 
 After each batch, re-run the coverage parser from _Run tests and parse coverage report_ to check progress toward the target.
 
@@ -190,12 +127,7 @@ Repeat _Triage each file for code smells_ through _Track progress_, moving down 
 
 // turbo
 
-Run the full test suite one final time and parse coverage:
-
-```bash
-make artisan-test
-# Re-run the coverage parser from _Run tests and parse coverage report_
-```
+Run the full test suite one final time with coverage and parse the results.
 
 ### Report
 

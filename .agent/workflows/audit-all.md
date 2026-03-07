@@ -4,17 +4,22 @@ description: Audit the full .agent/ system — rules, workflows, and knowledge �
 
 # /audit-all — Audit Everything
 
-Orchestrates the three sub-audits and produces a combined scored report. Each sub-audit writes its own artifact report.
+Orchestrates the three sub-audits and produces a combined scored report.
+
+> [!IMPORTANT]
+> **Each sub-audit MUST produce its own artifact report** and present it to the user before proceeding to the next sub-audit. The combined summary references these reports — it does not replace them.
 
 ## Steps
 
 ### Run sub-audits
 
-Run each sub-audit in order. Each produces its own artifact report:
+Run each sub-audit in order. Each produces its own artifact report that is presented for review:
 
-- `/audit-policy` — rules & policy health (structure, effectiveness, cross-cutting)
-- `/audit-workflows` — workflow structural quality (mechanical + AI checks covering headings, cross-refs, turbo, circular deps, orphan refs, DRY, SDLC pipeline, doc templates)
-- `/audit-knowledge` — KI accuracy, staleness, duplication, structural integrity
+1. **`/audit-policy`** — rules & policy health (structure, effectiveness, cross-cutting). Write artifact: `audit_policy.md`
+2. **`/audit-workflows`** — workflow structural quality (mechanical + AI checks). Write artifact: `audit_workflows.md`
+3. **`/audit-knowledge`** — KI accuracy, staleness, duplication, structural integrity. Write artifact: `audit_knowledge.md`
+
+Present all three sub-audit artifacts to the user for review before writing the combined summary.
 
 ### Score
 
@@ -38,7 +43,7 @@ For every ⚠️ and ❌ across all sub-audits, propose a specific fix:
 
 ## Output
 
-Write the combined summary to an artifact file and present for review. Use this template:
+Write the combined summary to an artifact file (`audit_report.md`) and present for review:
 
 ```markdown
 # Agent System Audit — <date>
