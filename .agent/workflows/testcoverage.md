@@ -113,7 +113,7 @@ For each file in the priority queue, **read it first** and apply `/sniff`'s _Sme
 
 For each clean file (or batch of related files):
 
-#### a. Identify test targets
+#### Identify test targets
 
 Read the file and identify:
 
@@ -121,7 +121,7 @@ Read the file and identify:
 2. **Primary error handling** (explicit catch blocks, guard clauses, validation)
 3. **Edge cases** (empty input, null handling, boundary conditions) — ONLY after main paths
 
-#### b. Check for existing tests
+#### Check for existing tests
 
 ```bash
 # Find existing test coverage for this file
@@ -130,7 +130,7 @@ grep -rn "ClassName" Tests/Integration/ --include='*.php' | head -5
 
 If a test file already exists, **extend it** rather than creating a new one.
 
-#### c. Write the test
+#### Write the test
 
 Follow project testing conventions:
 
@@ -150,7 +150,7 @@ public function itHandlesErrorCase(): void       // primary errors
 public function itHandlesEdgeCase(): void        // edge cases (after breadth)
 ```
 
-#### d. Run tests after each batch
+#### Run tests after each batch
 
 // turbo
 

@@ -56,7 +56,7 @@ For each KI that references specific code patterns, files, classes, or architect
 Compare each KI against `.agent/rules/` files:
 
 - Flag KIs that contradict current rules
-- Flag KIs that are fully absorbed into rules (redundant after retro promotion)
+- KIs that reinforce rules are **intentional** — rules aren't always read, so KIs serve as backup reinforcement. Do NOT flag these as redundant.
 - Flag KIs that describe conventions now superseded by newer rules
 
 #### Duplication across KIs

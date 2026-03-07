@@ -2,6 +2,11 @@
 
 Complement workflow rules. Apply to all code changes.
 
+## Core Principles
+
+- **Simple, elegant solutions**: prefer the simplest, most elegant code that solves the problem. Readable beats clever; straightforward beats compact. For non-trivial changes, pause and ask "is there a simpler structure?" If a fix feels hacky, reassess — there's almost always a cleaner path.
+- **Root-cause discipline**: never patch symptoms. Trace every fix to its root cause. If a fix feels like a workaround, it probably is — dig deeper before committing.
+
 ## API / Interface Discipline
 
 - Stable interfaces at boundaries (functions, modules, components). Optional params over duplicated paths. Consistent error semantics.
@@ -54,6 +59,6 @@ Behavior matches criteria · tests/lint/build pass · rollback strategy for risk
 
 ## Templates
 
-**Plan** (`TODO.md`): Goal → locate patterns → design → implement → test → verify → summarize → lessons.
+**Plan**: Goal → locate patterns → design → implement → test → verify → summarize → lessons.
 
 **Bugfix**: Repro steps → expected vs actual → root cause → fix → regression coverage → verification → risk/rollback.

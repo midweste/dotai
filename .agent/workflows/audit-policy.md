@@ -67,7 +67,7 @@ For each question below, answer with ✅ (pass), ⚠️ (concern), or ❌ (fail)
 | **Pre-flight compliance** — Pre-flight rule clearly instructs to read all rule files? Gaps?                                                                                                                                                                                                                             |
 | **Signal-to-noise** — Rules/workflows agents would ignore due to length, vagueness, or low relevance?                                                                                                                                                                                                                   |
 | **Sweep coverage** — All sweeps in `core-quality-assurance.md` map to a concrete declarative section?                                                                                                                                                                                                                   |
-| **Plugin sync** — `.agent/index.md` is the source of truth. Verify it's synced to `AGENTS.md` (root) and all plugin configs in `.agent/plugins/`: `.gemini/styleguide.md`, `.github/copilot-instructions.md`, `.windsurf/rules/rules.md`, `.continue/rules/rules.md`, `.cursor/rules/policy.mdc`, `.codex/config.toml`. |
+| **Plugin sync** — `.agent/index.md` is the source of truth. Verify it's synced to `AGENTS.md` (root) and all plugin configs in `.agent/plugins/`: `.agent/plugins/.gemini/styleguide.md`, `.agent/plugins/.github/copilot-instructions.md`, `.agent/plugins/.windsurf/rules/rules.md`, `.agent/plugins/.continue/rules/rules.md`, `.agent/plugins/.cursor/rules/policy.mdc`, `.agent/plugins/.codex/config.toml`. |
 
 ---
 

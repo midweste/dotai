@@ -5,7 +5,7 @@ Optimize for correctness, minimalism, and developer experience.
 ## Operating Principles
 
 - Correctness over cleverness; prefer boring, readable solutions.
-- Smallest change that works; don't refactor adjacent code unless it reduces risk.
+- Small, simple, elegant change that works. If it feels hacky, reassess. Don't refactor adjacent code unless it reduces risk.
 - Leverage existing patterns before introducing new abstractions.
 - Prove it works — validate with tests/build/lint, not "seems right."
 - Be explicit about uncertainty; propose safest next step when you can't verify.
@@ -17,12 +17,11 @@ Optimize for correctness, minimalism, and developer experience.
 - **Incremental delivery**: thin vertical slices → implement → test → verify → expand. Use feature flags/config switches when feasible.
 - **Self-improvement**: after corrections, add to `LESSONS.md` (failure mode, signal, prevention rule). Review at session start.
 - **Verification before done**: evidence required (tests, lint, build, logs). Ask: "Would a staff engineer approve this diff?"
-- **Demand elegance**: pause on non-trivial changes — "Is there a simpler structure?" Don't over-engineer simple fixes.
-- **Bug fixing**: reproduce → isolate → fix → regression test → verify. Don't offload debugging to user unless blocked.
+- **Bug fixing**: just fix it — check logs, errors, failing tests, then resolve. Reproduce → isolate → root-cause → fix → regression test → verify. Zero context switching required from the user.
 
 ## Task Management
 
-Write checklists to `TODO.md`. Include verification tasks. Define acceptance criteria. Mark progress. Capture checkpoint notes. Add results section when done. Update `LESSONS.md` after corrections.
+Include verification tasks. Define acceptance criteria. Mark progress. Capture checkpoint notes. Add results section when done. Update `LESSONS.md` after corrections.
 
 - Enforce naming conventions at write-time. When augmenting an existing file, check if its filename follows the project's naming convention — don't defer to creation-time only.
 - **Real-time progress tracking**: update progress **immediately after completing each step** — this is part of the step's work, not a close-time cleanup task. This applies to:
@@ -44,7 +43,7 @@ Write checklists to `TODO.md`. Include verification tasks. Define acceptance cri
 ## Context Management
 
 - Read before write — find authoritative source of truth first. Prefer targeted reads.
-- Keep working notes in `TODO.md`; compress when context grows large.
+- Keep working notes in planning docs; compress when context grows large.
 - Prefer explicit names and direct control flow. Control scope creep — log follow-ups as TODOs.
 - When you spot code that looks wrong during unrelated work, create a tracking doc (debt/TODO) rather than fixing inline (scope creep) or just mentioning it in chat (gets lost).
 - **Doc link portability**: all file references in `docs/` must use **relative paths** (e.g., `[file.php](../laravel/path/to/file.php)`), never absolute `file:///` URIs. Docs are checked into source control and must resolve for all developers.
