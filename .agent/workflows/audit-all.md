@@ -1,10 +1,10 @@
 ---
-description: Audit the full .agent/ system — rules, workflows, and knowledge — for overlap, gaps, conflicts, staleness, and agent compliance
+description: Audit the full .agent/ system — rules, workflows, knowledge, and memory — for overlap, gaps, conflicts, staleness, and agent compliance
 ---
 
 # /audit-all — Audit Everything
 
-Orchestrates the three sub-audits and produces a combined scored report.
+Orchestrates the four sub-audits and produces a combined scored report.
 
 > [!IMPORTANT]
 > **Each sub-audit MUST produce its own artifact report** and present it to the user before proceeding to the next sub-audit. The combined summary references these reports — it does not replace them.
@@ -13,17 +13,13 @@ Orchestrates the three sub-audits and produces a combined scored report.
 
 ### Run sub-audits
 
-Run each sub-audit in order. Each produces its own artifact report that is presented for review:
+Discover all audit workflows by listing `.agent/workflows/audit-*.md` (excluding `audit-all.md` itself). Run each in order. Each produces its own artifact report that is presented for review.
 
-1. **`/audit-policy`** — rules & policy health (structure, effectiveness, cross-cutting). Write artifact: `audit_policy.md`
-2. **`/audit-workflows`** — workflow structural quality (mechanical + AI checks). Write artifact: `audit_workflows.md`
-3. **`/audit-knowledge`** — KI accuracy, staleness, duplication, structural integrity. Write artifact: `audit_knowledge.md`
-
-Present all three sub-audit artifacts to the user for review before writing the combined summary.
+Present all sub-audit artifacts to the user for review before writing the combined summary.
 
 ### Score
 
-Combine findings from all three sub-audits and assign an overall health score:
+Combine findings from all sub-audits and assign an overall health score:
 
 | Score | Meaning                           |
 | ----- | --------------------------------- |
@@ -62,9 +58,7 @@ Write the combined summary to an artifact file (`audit_report.md`) and present f
 
 | Audit          | Findings         | Key Issues |
 | -------------- | ---------------- | ---------- |
-| Rules & Policy | <✅/⚠️/❌ count> | <summary>  |
-| Workflows      | <✅/⚠️/❌ count> | <summary>  |
-| Knowledge      | <✅/⚠️/❌ count> | <summary>  |
+| <audit name>   | <✅/⚠️/❌ count> | <summary>  |
 
 ## Recommendations
 

@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+# --- Auto-activate local venv if present ---
+import os as _os, sys as _sys
+_venv = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), ".venv", "bin", "python")
+if _os.path.isfile(_venv) and _sys.executable != _venv:
+    _os.execv(_venv, [_venv] + _sys.argv)
+# --- End venv activation ---
+
+# Suppress __pycache__ directories
+_sys.dont_write_bytecode = True
+
+import argparse
+import json
+
+from src.deps import DependencyChecker
+from src.db import Database
+from src.stores import MemoryStore, LinkStore, BuildMetaStore
+from src.decay import DecayEngine
+from src.git import GitLogParser
+from src.llm import LLMClient
+from src.build import BuildAgent
+from src.inspector import Inspector
+from src.server import McpServer
+from src.models import BuildMetaEntry
+
+
+def create_components(db_path=None, repo_path=None):
+    """Create and wire all components."""
+    db = Database(db_path)
+    db.init_schema()
+    memory_store = MemoryStore(db)
+    link_store = LinkStore(db)
+    build_meta_store = BuildMetaStore(db)
+    decay_engine = DecayEngine(db)
+    git_parser = GitLogParser(repo_path)
+    llm_client = LLMClient()
+    inspector = Inspector(db, memory_store, link_store, build_meta_store)
+    return (db, memory_store, link_store, build_meta_store, decay_engine,
+            git_parser, llm_client, inspector)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Project Memory System — persistent project knowledge from git history",
+    )
+    subparsers = parser.add_subparsers(dest="command", help="Command to run")
+
+    # serve
+    serve_parser = subparsers.add_parser("serve", help="Start MCP server (stdio)")
+
+    # build
+    build_parser = subparsers.add_parser("build", help="Incremental build from new commits")
+    build_parser.add_argument("--limit", type=int, default=None,
+                              help="Max number of commits to process")
+    build_parser.add_argument("--db", type=str, default=None,
+                              help="Path to database file")
+    build_parser.add_argument("--repo", type=str, default=None,
+                              help="Path to git repository")
+
+    # rebuild
+    rebuild_parser = subparsers.add_parser("rebuild", help="Full rebuild from git history")
+    rebuild_parser.add_argument("--limit", type=int, default=None,
+                                help="Max number of commits to process")
+    rebuild_parser.add_argument("--db", type=str, default=None,
+                                help="Path to database file")
+    rebuild_parser.add_argument("--repo", type=str, default=None,
+                                help="Path to git repository")
+
+    # inspect
+    inspect_parser = subparsers.add_parser("inspect", help="Debug/inspect raw data")
+    inspect_parser.add_argument("query", nargs="*", default=["help"],
+                                help="Inspect command (tables, memories, memory <id>, etc.)")
+    inspect_parser.add_argument("--db", type=str, default=None,
+                                help="Path to database file")
+
+    args = parser.parse_args()
+
+    if args.command is None:
+        parser.print_help()
+        _sys.exit(1)
+
+    # Only check deps that are needed for this command
+    if args.command == "serve":
+        DependencyChecker.check()
+    elif args.command in ("build", "rebuild"):
+        DependencyChecker.check(skip=("mcp",), require_api_key=True)
+    else:
+        DependencyChecker.check(skip=("mcp", "requests"))
+
+    db_path = getattr(args, "db", None)
+    repo_path = getattr(args, "repo", None)
+
+    (db, memory_store, link_store, build_meta_store, decay_engine,
+     git_parser, llm_client, inspector) = create_components(db_path, repo_path)
+
+    try:
+        if args.command == "serve":
+            agent = BuildAgent(
+                db, memory_store, link_store, build_meta_store,
+                decay_engine, git_parser, llm_client,
+            )
+            server = McpServer(
+                memory_store, link_store, build_meta_store, inspector,
+                build_agent=agent,
+            )
+            server.run()
+
+        elif args.command == "build":
+            agent = BuildAgent(
+                db, memory_store, link_store, build_meta_store,
+                decay_engine, git_parser, llm_client,
+            )
+            result = agent.build(limit=args.limit)
+            print(json.dumps(result, indent=2))
+
+        elif args.command == "rebuild":
+            agent = BuildAgent(
+                db, memory_store, link_store, build_meta_store,
+                decay_engine, git_parser, llm_client,
+            )
+            result = agent.rebuild(limit=args.limit)
+            print(json.dumps(result, indent=2))
+
+        elif args.command == "inspect":
+            query_str = " ".join(args.query)
+            print(inspector.inspect(query_str))
+    finally:
+        db.close()
+
+
+if __name__ == "__main__":
+    main()

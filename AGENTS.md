@@ -10,4 +10,15 @@ run_command("echo '...' | .agent/bin/gemini-gateway --model <quick|fast|think|de
 
 3. **Scan skills** — your available skills are listed in your system prompt under "Available skills". For each skill matching your current task, `view_file` its SKILL.md and apply its guidance. Do this in the same batch as reading rules.
 
-4. **Never skip steps 1–3.** If you find yourself about to start coding without having evaluated parallelism, read rules, and scanned skills — STOP and complete this checklist first.
+4. **Query project memory** — if the `project-memory` MCP server is available, use `memory_search` to find memories relevant to the current task before doing independent research. Project memories contain decisions, patterns, conventions, and debt extracted from git history. Treat them as context alongside Knowledge Items — verify against current code, but use them to avoid rediscovering what's already known.
+
+5. **Never skip steps 1–4.** If you find yourself about to start coding without having evaluated parallelism, read rules, and scanned skills — STOP and complete this checklist first.
+
+## Rule Priority
+
+When rules conflict, apply this precedence (highest first):
+
+1. **CRITICAL-prefixed rules** — non-negotiable directives
+2. **Platform rules** (`platform-*.md`) — apply only when the platform is detected; skip otherwise
+3. **Language rules** (`language-*.md`) — apply only for matching file types
+4. **Core rules** (`core-*.md`) — always apply
