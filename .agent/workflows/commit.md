@@ -36,6 +36,8 @@ Confidence: high|medium|low
 ```
 
 **Rules:**
+- **NEVER commit unless the user explicitly invokes `/commit`** — do not auto-commit after completing work
+- **NEVER `git push`** — pushing is always the user's responsibility
 - Summary line: imperative mood, ≤72 chars
 - Body: wrap at 72 chars, explain the "why" not just the "what"
 - `Type` trailer is always present
@@ -45,12 +47,10 @@ Confidence: high|medium|low
   - `medium` = reasonable approach, some unknowns
   - `low` = quick fix, uncertain side effects
 - The commit message captures your working context before it evaporates
-- **NEVER `git push`** — pushing is always the user's responsibility
-- If all changes are already staged, commit directly without asking for confirmation
 
 ### Commit
 
-If all changes are already staged, commit immediately. Otherwise show the generated message to the user first.
+Show the generated message to the user. Apply only on approval.
 
 ```bash
 git commit -m "<generated message>"
