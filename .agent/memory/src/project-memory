@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-# --- Auto-activate local venv if present ---
+"""Project Memory System entrypoint."""
+
 import os as _os, sys as _sys
-_venv = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), ".venv", "bin", "python")
-if _os.path.isfile(_venv) and _sys.executable != _venv:
-    _os.execv(_venv, [_venv] + _sys.argv)
-# --- End venv activation ---
+
+# Ensure parent directory (memory/) is on path so 'src' package is importable
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), ".."))
 
 # Suppress __pycache__ directories
 _sys.dont_write_bytecode = True

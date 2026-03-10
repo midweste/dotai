@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Thin wrapper — Antigravity points here, actual code lives in project-memory.
+# This ensures code changes are picked up without restarting Antigravity.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+exec "$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/src/project-memory" "$@"
