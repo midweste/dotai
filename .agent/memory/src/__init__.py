@@ -1,5 +1,12 @@
 """Project Memory System — persistent, queryable project knowledge derived from git history."""
 
+from pathlib import Path as _Path
+
+# Single source of truth: project root derived from package location.
+# The memory system lives at {project_root}/.agent/memory/src/
+#   src/ → memory/ → .agent/ → project_root
+PROJECT_ROOT = str(_Path(__file__).resolve().parent.parent.parent.parent)
+
 from src.models import Memory, MemoryLink, BuildMetaEntry, ParsedCommit
 from src.models import MEMORY_TYPES, CONFIDENCE_LEVELS, RELATIONSHIP_TYPES
 from src.db import Database

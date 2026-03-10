@@ -18,7 +18,10 @@ class GitLogParser:
     })
 
     def __init__(self, repo_path: Optional[str] = None):
-        self.repo_path = repo_path or os.getcwd()
+        if repo_path is None:
+            from src import PROJECT_ROOT
+            repo_path = PROJECT_ROOT
+        self.repo_path = repo_path
 
     def _run_git(self, *args: str) -> str:
         """Run a git command and return stdout."""

@@ -17,11 +17,14 @@ class LLMClient:
 
     def __init__(
         self,
-        *,
-        api_key: Optional[str] = None,
-        api_url: Optional[str] = None,
         model: Optional[str] = None,
+        api_url: Optional[str] = None,
+        api_key: Optional[str] = None,
     ):
+        from src import PROJECT_ROOT
+        self._log_dir = os.path.join(
+            PROJECT_ROOT, ".agent", "memory", "data", "build_responses"
+        )
         self.api_key = api_key or os.environ.get("OPENROUTER_API_KEY", "")
         self.api_url = api_url or os.environ.get(
             "MEMORY_BUILD_API_URL", self.DEFAULT_API_URL
@@ -182,13 +185,10 @@ class LLMClient:
         content even for non-streaming requests.
         """
         try:
-            log_dir = os.path.join(
-                os.getcwd(), ".agent", "memory", "data", "build_responses"
-            )
-            os.makedirs(log_dir, exist_ok=True)
+            os.makedirs(self._log_dir, exist_ok=True)
             from datetime import datetime
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            path = os.path.join(log_dir, f"{ts}.json")
+            path = os.path.join(self._log_dir, f"{ts}.json")
 
             log_entry = {
                 "request": {

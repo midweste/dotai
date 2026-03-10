@@ -24,7 +24,7 @@ from src.server import McpServer
 from src.models import BuildMetaEntry
 
 
-def create_components(db_path=None, repo_path=None):
+def create_components(db_path=None, repo_path=None, project_root=None):
     """Create and wire all components."""
     db = Database(db_path)
     db.init_schema()
@@ -32,7 +32,7 @@ def create_components(db_path=None, repo_path=None):
     link_store = LinkStore(db)
     build_meta_store = BuildMetaStore(db)
     decay_engine = DecayEngine(db)
-    git_parser = GitLogParser(repo_path)
+    git_parser = GitLogParser(repo_path or project_root)
     llm_client = LLMClient()
     inspector = Inspector(db, memory_store, link_store, build_meta_store)
     return (db, memory_store, link_store, build_meta_store, decay_engine,
@@ -87,45 +87,66 @@ def main():
     else:
         DependencyChecker.check(skip=("mcp", "requests"))
 
-    db_path = getattr(args, "db", None)
-    repo_path = getattr(args, "repo", None)
 
-    (db, memory_store, link_store, build_meta_store, decay_engine,
-     git_parser, llm_client, inspector) = create_components(db_path, repo_path)
-
-    try:
-        if args.command == "serve":
+    if args.command == "serve":
+        # Serve mode: components created lazily from MCP roots
+        def component_factory(project_root=None):
+            comps = create_components(
+                repo_path=project_root,
+                project_root=project_root,
+            )
+            (db, mem_store, lnk_store, bm_store,
+             decay_eng, git_par, llm_cl, insp) = comps
             agent = BuildAgent(
-                db, memory_store, link_store, build_meta_store,
-                decay_engine, git_parser, llm_client,
+                db, mem_store, lnk_store, bm_store,
+                decay_eng, git_par, llm_cl,
             )
-            server = McpServer(
-                memory_store, link_store, build_meta_store, inspector,
-                build_agent=agent,
-            )
+            return {
+                "db": db,
+                "memory_store": mem_store,
+                "link_store": lnk_store,
+                "build_meta_store": bm_store,
+                "inspector": insp,
+                "build_agent": agent,
+            }
+
+        server = McpServer(component_factory)
+        try:
             server.run()
+        finally:
+            server.cleanup()
 
-        elif args.command == "build":
-            agent = BuildAgent(
-                db, memory_store, link_store, build_meta_store,
-                decay_engine, git_parser, llm_client,
-            )
-            result = agent.build(limit=args.limit)
-            print(json.dumps(result, indent=2))
+    else:
+        # CLI commands: use explicit paths
+        db_path = getattr(args, "db", None)
+        repo_path = getattr(args, "repo", None)
+        project_root = getattr(args, "project_root", None)
+        (db, memory_store, link_store, build_meta_store, decay_engine,
+         git_parser, llm_client, inspector) = create_components(
+            db_path, repo_path, project_root,
+        )
+        try:
+            if args.command == "build":
+                agent = BuildAgent(
+                    db, memory_store, link_store, build_meta_store,
+                    decay_engine, git_parser, llm_client,
+                )
+                result = agent.build(limit=args.limit)
+                print(json.dumps(result, indent=2))
 
-        elif args.command == "rebuild":
-            agent = BuildAgent(
-                db, memory_store, link_store, build_meta_store,
-                decay_engine, git_parser, llm_client,
-            )
-            result = agent.rebuild(limit=args.limit)
-            print(json.dumps(result, indent=2))
+            elif args.command == "rebuild":
+                agent = BuildAgent(
+                    db, memory_store, link_store, build_meta_store,
+                    decay_engine, git_parser, llm_client,
+                )
+                result = agent.rebuild(limit=args.limit)
+                print(json.dumps(result, indent=2))
 
-        elif args.command == "inspect":
-            query_str = " ".join(args.query)
-            print(inspector.inspect(query_str))
-    finally:
-        db.close()
+            elif args.command == "inspect":
+                query_str = " ".join(args.query)
+                print(inspector.inspect(query_str))
+        finally:
+            db.close()
 
 
 if __name__ == "__main__":

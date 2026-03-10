@@ -12,7 +12,8 @@ class Database:
 
     def __init__(self, db_path: Optional[str] = None):
         if db_path is None:
-            data_dir = Path.cwd() / ".agent" / "memory" / "data"
+            from src import PROJECT_ROOT
+            data_dir = Path(PROJECT_ROOT) / ".agent" / "memory" / "data"
             data_dir.mkdir(parents=True, exist_ok=True)
             db_path = str(data_dir / "project_memory.db")
         self.db_path = db_path
