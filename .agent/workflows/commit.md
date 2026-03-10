@@ -45,10 +45,12 @@ Confidence: high|medium|low
   - `medium` = reasonable approach, some unknowns
   - `low` = quick fix, uncertain side effects
 - The commit message captures your working context before it evaporates
+- **NEVER `git push`** — pushing is always the user's responsibility
+- If all changes are already staged, commit directly without asking for confirmation
 
-### Present for confirmation
+### Commit
 
-Show the generated message to the user. Apply on approval.
+If all changes are already staged, commit immediately. Otherwise show the generated message to the user first.
 
 ```bash
 git commit -m "<generated message>"
