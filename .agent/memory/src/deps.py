@@ -54,15 +54,18 @@ class DependencyChecker:
             )
             sys.exit(1)
 
-        if require_api_key and not os.environ.get("OPENROUTER_API_KEY"):
-            env_path = Path(__file__).parent.parent / ".env"
-            print(
-                f"No API key found. Set OPENROUTER_API_KEY in one of:\n"
-                f"  1. {env_path}  (recommended)\n"
-                f"     OPENROUTER_API_KEY=sk-or-...\n"
-                f"  2. Shell environment:\n"
-                f"     export OPENROUTER_API_KEY=sk-or-...\n\n"
-                f"Get a key at: https://openrouter.ai/keys",
-                file=sys.stderr,
-            )
-            sys.exit(1)
+        if require_api_key:
+            from src.config import Config
+            config = Config.from_env()
+            if not config.openrouter_api_key:
+                env_path = Path(__file__).parent.parent / ".env"
+                print(
+                    f"No API key found. Set OPENROUTER_API_KEY in one of:\n"
+                    f"  1. {env_path}  (recommended)\n"
+                    f"     OPENROUTER_API_KEY=sk-or-...\n"
+                    f"  2. Shell environment:\n"
+                    f"     export OPENROUTER_API_KEY=sk-or-...\n\n"
+                    f"Get a key at: https://openrouter.ai/keys",
+                    file=sys.stderr,
+                )
+                sys.exit(1)

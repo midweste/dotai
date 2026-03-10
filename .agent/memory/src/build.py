@@ -3,7 +3,10 @@
 import json
 import os
 import sys
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.config import Config
 
 from src.models import Memory, MemoryLink, BuildMetaEntry, ParsedCommit
 from src.db import Database
@@ -131,7 +134,12 @@ class BuildAgent:
         build_meta_store: BuildMetaStore,
         git_parser: GitLogParser,
         llm_client: LLMClient,
+        config: Optional["Config"] = None,
     ):
+        if config is None:
+            from src.config import Config
+            config = Config.from_env()
+        self._config = config
         self._db = db
         self._memories = memory_store
         self._links = link_store
@@ -153,8 +161,7 @@ class BuildAgent:
                    MEMORY_COMMIT_LIMIT env var if not provided.
                    0 or None = all commits.
         """
-        if limit is None:
-            limit = int(os.environ.get("MEMORY_COMMIT_LIMIT", "0")) or None
+        limit = limit or self._config.commit_limit or None
         import shutil
 
         db_path = self._db.db_path
@@ -209,16 +216,12 @@ class BuildAgent:
     _OVERHEAD_TOKENS = 8_000
     # Minimum output tokens to reserve for the response
     _MIN_OUTPUT_TOKENS = 4_000
-    # Default per-batch token budget for commit input
-    _DEFAULT_BATCH_BUDGET = 10_000
 
     def _compute_budget(self) -> tuple[int, int]:
         """Compute (batch_budget, max_output_tokens) from model capabilities.
 
-        Uses MEMORY_BATCH_TOKEN_BUDGET env var if set, otherwise defaults
-        to 30K tokens per batch. Output tokens auto-tuned from model.
+        Uses config batch_token_budget. Output tokens auto-tuned from model.
         """
-        env_budget = os.environ.get("MEMORY_BATCH_TOKEN_BUDGET")
         info = self._llm.get_model_info()
         ctx = info["context_length"]
         model_max_output = info["max_completion_tokens"]
@@ -227,11 +230,7 @@ class BuildAgent:
         max_output = min(model_max_output, ctx // 3)
         max_output = max(max_output, self._MIN_OUTPUT_TOKENS)
 
-        if env_budget:
-            return int(env_budget), max_output
-
-        # Default: 30K per batch — produces even, manageable batches
-        return self._DEFAULT_BATCH_BUDGET, max_output
+        return self._config.batch_token_budget, max_output
 
     def _run_build(
         self,
@@ -265,7 +264,7 @@ class BuildAgent:
             return {"status": "no_new_commits", "commits_processed": 0}
 
         # Split into batches by token budget + commit count limit
-        max_commits = int(os.environ.get("MEMORY_BATCH_MAX_COMMITS", "10"))
+        max_commits = self._config.batch_max_commits
         batches = self._make_batches(commits, token_budget, max_commits)
         total = len(commits)
         new_count = 0

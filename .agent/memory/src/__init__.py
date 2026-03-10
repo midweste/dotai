@@ -9,6 +9,7 @@ PROJECT_ROOT = str(_Path(__file__).resolve().parent.parent.parent.parent)
 
 from src.models import Memory, MemoryLink, BuildMetaEntry, ParsedCommit
 from src.models import MEMORY_TYPES, CONFIDENCE_LEVELS, RELATIONSHIP_TYPES
+from src.config import Config
 from src.db import Database
 from src.stores import MemoryStore, LinkStore, BuildMetaStore
 from src.git import GitLogParser
@@ -21,6 +22,7 @@ from src.deps import DependencyChecker
 __all__ = [
     "Memory", "MemoryLink", "BuildMetaEntry", "ParsedCommit",
     "MEMORY_TYPES", "CONFIDENCE_LEVELS", "RELATIONSHIP_TYPES",
+    "Config",
     "Database",
     "MemoryStore", "LinkStore", "BuildMetaStore",
     "GitLogParser",

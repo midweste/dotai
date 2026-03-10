@@ -3,7 +3,10 @@
 import json
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.config import Config
 
 
 class LLMClient:
@@ -17,21 +20,19 @@ class LLMClient:
 
     def __init__(
         self,
-        model: Optional[str] = None,
-        api_url: Optional[str] = None,
-        api_key: Optional[str] = None,
+        config: Optional["Config"] = None,
     ):
         from src import PROJECT_ROOT
         self._log_dir = os.path.join(
             PROJECT_ROOT, ".agent", "memory", "data", "build_responses"
         )
-        self.api_key = api_key or os.environ.get("OPENROUTER_API_KEY", "")
-        self.api_url = api_url or os.environ.get(
-            "MEMORY_BUILD_API_URL", self.DEFAULT_API_URL
-        )
-        self.model = model or os.environ.get(
-            "MEMORY_BUILD_MODEL", self.DEFAULT_MODEL
-        )
+        if config is None:
+            from src.config import Config
+            config = Config.from_env()
+        self.api_key = config.openrouter_api_key
+        self.api_url = config.api_url
+        self.model = config.model
+        self._min_context_length = config.min_context_length
         self._model_info: Optional[dict] = None
 
     def get_model_info(self) -> dict:
@@ -90,10 +91,10 @@ class LLMClient:
         """
         info = self.get_model_info()
         ctx = info["context_length"]
-        if ctx < self.MIN_CONTEXT_LENGTH:
+        if ctx < self._min_context_length:
             raise RuntimeError(
                 f"Model '{self.model}' context window ({ctx:,} tokens) is too "
-                f"small. Minimum required: {self.MIN_CONTEXT_LENGTH:,}. "
+                f"small. Minimum required: {self._min_context_length:,}. "
                 f"Use a model with a larger context window."
             )
         supported = info.get("supported_parameters", [])
