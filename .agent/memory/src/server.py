@@ -38,6 +38,12 @@ class McpServer:
                 file=sys.stderr, flush=True,
             )
 
+        # Override the single source of truth so all modules (db, llm, git)
+        # use the MCP client's project, not where the server code lives.
+        if project_root:
+            import src
+            src.PROJECT_ROOT = project_root
+
         project_name = project_root.rstrip("/").rsplit("/", 1)[-1] if project_root else "unknown"
         print(
             f"  project: {project_name} ({project_root})",
