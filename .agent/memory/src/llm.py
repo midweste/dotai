@@ -155,16 +155,26 @@ class LLMClient:
 
         data = json.loads(raw_body)
 
-        # Detect truncated output before attempting JSON parse
-        finish_reason = data["choices"][0].get("finish_reason", "")
+        content = data["choices"][0]["message"].get("content") or ""
+        finish_reason = data["choices"][0].get("finish_reason", "unknown")
+
+        # Detect truncated output
         if finish_reason == "length":
             raise ValueError(
                 f"LLM response truncated (finish_reason=length). "
                 f"Reduce batch size or increase max_tokens."
             )
 
-        content = data["choices"][0]["message"]["content"]
-        return self._strip_json_fences(content)
+        content = self._strip_json_fences(content)
+
+        # Detect empty content (transient API issue)
+        if not content.strip():
+            raise ValueError(
+                f"LLM returned empty content (finish_reason={finish_reason}). "
+                f"This is a transient API issue — will retry."
+            )
+
+        return content
 
     @staticmethod
     def _truncate_message(msg: dict, max_chars: int = 500) -> dict:

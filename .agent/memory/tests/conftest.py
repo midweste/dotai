@@ -14,7 +14,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from src.db import Database
 from src.stores import MemoryStore, LinkStore, BuildMetaStore
-from src.decay import DecayEngine
 from src.inspector import Inspector
 
 
@@ -45,9 +44,6 @@ def build_meta_store(db):
     return BuildMetaStore(db)
 
 
-@pytest.fixture
-def decay_engine(db):
-    return DecayEngine(db)
 
 
 @pytest.fixture
@@ -57,7 +53,6 @@ def components(db):
         "memory_store": MemoryStore(db),
         "link_store": LinkStore(db),
         "build_meta_store": BuildMetaStore(db),
-        "decay_engine": DecayEngine(db),
     }
 
 

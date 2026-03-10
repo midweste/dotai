@@ -15,7 +15,6 @@ import json
 from src.deps import DependencyChecker
 from src.db import Database
 from src.stores import MemoryStore, LinkStore, BuildMetaStore
-from src.decay import DecayEngine
 from src.git import GitLogParser
 from src.llm import LLMClient
 from src.build import BuildAgent
@@ -31,11 +30,10 @@ def create_components(db_path=None, repo_path=None, project_root=None):
     memory_store = MemoryStore(db)
     link_store = LinkStore(db)
     build_meta_store = BuildMetaStore(db)
-    decay_engine = DecayEngine(db)
     git_parser = GitLogParser(repo_path or project_root)
     llm_client = LLMClient()
     inspector = Inspector(db, memory_store, link_store, build_meta_store)
-    return (db, memory_store, link_store, build_meta_store, decay_engine,
+    return (db, memory_store, link_store, build_meta_store,
             git_parser, llm_client, inspector)
 
 
@@ -49,22 +47,13 @@ def main():
     serve_parser = subparsers.add_parser("serve", help="Start MCP server (stdio)")
 
     # build
-    build_parser = subparsers.add_parser("build", help="Incremental build from new commits")
+    build_parser = subparsers.add_parser("build", help="Full rebuild from git history")
     build_parser.add_argument("--limit", type=int, default=None,
                               help="Max number of commits to process")
     build_parser.add_argument("--db", type=str, default=None,
                               help="Path to database file")
     build_parser.add_argument("--repo", type=str, default=None,
                               help="Path to git repository")
-
-    # rebuild
-    rebuild_parser = subparsers.add_parser("rebuild", help="Full rebuild from git history")
-    rebuild_parser.add_argument("--limit", type=int, default=None,
-                                help="Max number of commits to process")
-    rebuild_parser.add_argument("--db", type=str, default=None,
-                                help="Path to database file")
-    rebuild_parser.add_argument("--repo", type=str, default=None,
-                                help="Path to git repository")
 
     # inspect
     inspect_parser = subparsers.add_parser("inspect", help="Debug/inspect raw data")
@@ -82,7 +71,7 @@ def main():
     # Only check deps that are needed for this command
     if args.command == "serve":
         DependencyChecker.check()
-    elif args.command in ("build", "rebuild"):
+    elif args.command == "build":
         DependencyChecker.check(skip=("mcp",), require_api_key=True)
     else:
         DependencyChecker.check(skip=("mcp", "requests"))
@@ -96,10 +85,10 @@ def main():
                 project_root=project_root,
             )
             (db, mem_store, lnk_store, bm_store,
-             decay_eng, git_par, llm_cl, insp) = comps
+             git_par, llm_cl, insp) = comps
             agent = BuildAgent(
                 db, mem_store, lnk_store, bm_store,
-                decay_eng, git_par, llm_cl,
+                git_par, llm_cl,
             )
             return {
                 "db": db,
@@ -121,7 +110,7 @@ def main():
         db_path = getattr(args, "db", None)
         repo_path = getattr(args, "repo", None)
         project_root = getattr(args, "project_root", None)
-        (db, memory_store, link_store, build_meta_store, decay_engine,
+        (db, memory_store, link_store, build_meta_store,
          git_parser, llm_client, inspector) = create_components(
             db_path, repo_path, project_root,
         )
@@ -129,17 +118,9 @@ def main():
             if args.command == "build":
                 agent = BuildAgent(
                     db, memory_store, link_store, build_meta_store,
-                    decay_engine, git_parser, llm_client,
+                    git_parser, llm_client,
                 )
                 result = agent.build(limit=args.limit)
-                print(json.dumps(result, indent=2))
-
-            elif args.command == "rebuild":
-                agent = BuildAgent(
-                    db, memory_store, link_store, build_meta_store,
-                    decay_engine, git_parser, llm_client,
-                )
-                result = agent.rebuild(limit=args.limit)
                 print(json.dumps(result, indent=2))
 
             elif args.command == "inspect":

@@ -8,7 +8,6 @@ from typing import Optional
 from src.models import Memory, MemoryLink, BuildMetaEntry, ParsedCommit
 from src.db import Database
 from src.stores import MemoryStore, LinkStore, BuildMetaStore
-from src.decay import DecayEngine
 from src.git import GitLogParser
 from src.llm import LLMClient
 
@@ -83,6 +82,7 @@ Return this exact JSON structure:
 {
   "new_memories": [
     {
+      "key": "short_snake_case_slug",
       "summary": "...",
       "type": "decision|pattern|convention|debt|bug_fix|context",
       "confidence": "high|medium|low",
@@ -103,18 +103,25 @@ Return this exact JSON structure:
   "deactivate_memory_ids": [456],
   "new_links": [
     {
-      "memory_id_a": 1,
-      "memory_id_b": 2,
+      "source": "short_snake_case_slug OR integer_id",
+      "target": "short_snake_case_slug OR integer_id",
       "relationship": "supersedes",
       "strength": 0.9
     }
   ]
 }
+
+LINKING ID RULES — read carefully:
+- Each new memory MUST have a unique "key" (short snake_case slug, e.g. "jwt_auth_decision")
+- In new_links, reference NEW memories by their string key
+- Reference EXISTING memories by their integer id (as provided in the existing memories list)
+- Example: {"source": "jwt_auth_decision", "target": 15, "relationship": "implements"}
+- NEVER use integer IDs for new memories — always use the string key
 """
 
 
 class BuildAgent:
-    """Orchestrates build: parse commits → LLM call → memory diffing → DB writes → decay."""
+    """Orchestrates build: parse commits → LLM call → memory creation → DB writes."""
 
     def __init__(
         self,
@@ -122,7 +129,6 @@ class BuildAgent:
         memory_store: MemoryStore,
         link_store: LinkStore,
         build_meta_store: BuildMetaStore,
-        decay_engine: DecayEngine,
         git_parser: GitLogParser,
         llm_client: LLMClient,
     ):
@@ -130,28 +136,25 @@ class BuildAgent:
         self._memories = memory_store
         self._links = link_store
         self._build_meta = build_meta_store
-        self._decay = decay_engine
         self._git = git_parser
         self._llm = llm_client
 
     def build(self, *, limit: Optional[int] = None) -> dict:
-        """Incremental build — process commits since last build."""
-        last_build = self._build_meta.get_last()
-        since_hash = last_build.last_commit if last_build else None
+        """Full rebuild — drop DB and reprocess all git history.
 
-        return self._run_build(
-            since_hash=since_hash,
-            limit=limit,
-            build_type="incremental",
-        )
+        Always does a complete rebuild: drops all tables and recreates the
+        schema for a clean start. Uses drop_all() instead of file deletion
+        so other processes (MCP server) with open connections see changes
+        immediately. Backs up the existing DB first. If the rebuild produces
+        zero memories (total failure), restores the backup.
 
-    def rebuild(self, *, limit: Optional[int] = None) -> dict:
-        """Full rebuild — delete DB files and reprocess all history.
-
-        Physically removes the database, WAL, and SHM files for a clean start.
-        Backs up the existing DB first. If the rebuild produces zero memories
-        (total failure), restores the backup.
+        Args:
+            limit: Max commits to process (newest first). Reads from
+                   MEMORY_COMMIT_LIMIT env var if not provided.
+                   0 or None = all commits.
         """
+        if limit is None:
+            limit = int(os.environ.get("MEMORY_COMMIT_LIMIT", "0")) or None
         import shutil
 
         db_path = self._db.db_path
@@ -159,21 +162,23 @@ class BuildAgent:
         backup_path = f"{db_path}.bak" if is_file_db else None
 
         if is_file_db:
-            # Close existing connection before file operations
-            self._db.close()
-
-            # Backup existing DB
+            # Backup existing DB before wiping
             shutil.copy2(db_path, backup_path)  # type: ignore[arg-type]
 
-            # Delete DB and associated WAL/SHM files
-            for suffix in ("", "-wal", "-shm"):
-                path = db_path + suffix
-                if os.path.exists(path):
-                    os.remove(path)
-
-        # Fresh connection and schema
-        self._db.__init__(db_path)  # type: ignore[misc]
+        # Wipe all tables in-place (preserves file inode for other connections)
+        self._db.drop_all()
         self._db.init_schema()
+
+        # Clear old build response logs — keep only current build's files
+        responses_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "data", "build_responses",
+        )
+        if os.path.isdir(responses_dir):
+            for f in os.listdir(responses_dir):
+                fp = os.path.join(responses_dir, f)
+                if os.path.isfile(fp):
+                    os.remove(fp)
 
         result = self._run_build(
             since_hash=None,
@@ -184,7 +189,7 @@ class BuildAgent:
         # Restore backup if rebuild produced nothing
         if result.get("new_memories", 0) == 0 and backup_path and os.path.exists(backup_path):
             self._db.close()
-            # Delete the failed DB files
+            # Replace the failed DB with backup
             for suffix in ("", "-wal", "-shm"):
                 path = db_path + suffix
                 if os.path.exists(path):
@@ -204,16 +209,14 @@ class BuildAgent:
     _OVERHEAD_TOKENS = 8_000
     # Minimum output tokens to reserve for the response
     _MIN_OUTPUT_TOKENS = 4_000
-    # Fallback budget if model info is unavailable
-    _FALLBACK_BUDGET = 10_000
+    # Default per-batch token budget for commit input
+    _DEFAULT_BATCH_BUDGET = 10_000
 
     def _compute_budget(self) -> tuple[int, int]:
-        """Compute (input_budget, max_output_tokens) from model capabilities.
+        """Compute (batch_budget, max_output_tokens) from model capabilities.
 
-        Uses the model's context_length and max_completion_tokens to
-        dynamically allocate space:
-          input_budget = context_length - overhead - output_reserve
-          max_output  = min(max_completion_tokens, context_length // 3)
+        Uses MEMORY_BATCH_TOKEN_BUDGET env var if set, otherwise defaults
+        to 30K tokens per batch. Output tokens auto-tuned from model.
         """
         env_budget = os.environ.get("MEMORY_BATCH_TOKEN_BUDGET")
         info = self._llm.get_model_info()
@@ -225,13 +228,10 @@ class BuildAgent:
         max_output = max(max_output, self._MIN_OUTPUT_TOKENS)
 
         if env_budget:
-            # User override — respect it, but still use dynamic output
             return int(env_budget), max_output
 
-        # Dynamic: context - overhead - output = available for commits
-        input_budget = ctx - self._OVERHEAD_TOKENS - max_output
-        input_budget = max(input_budget, 5_000)  # floor
-        return input_budget, max_output
+        # Default: 30K per batch — produces even, manageable batches
+        return self._DEFAULT_BATCH_BUDGET, max_output
 
     def _run_build(
         self,
@@ -258,12 +258,15 @@ class BuildAgent:
         # Get commits
         raw_log = self._git.get_file_list(since_hash=since_hash, limit=limit)
         commits = self._git.parse(raw_log)
+        if limit:
+            commits.reverse()  # git returned newest-first, we want chronological
 
         if not commits:
             return {"status": "no_new_commits", "commits_processed": 0}
 
-        # Split into token-aware batches using dynamic budget
-        batches = self._make_batches(commits, token_budget)
+        # Split into batches by token budget + commit count limit
+        max_commits = int(os.environ.get("MEMORY_BATCH_MAX_COMMITS", "10"))
+        batches = self._make_batches(commits, token_budget, max_commits)
         total = len(commits)
         new_count = 0
         updated_count = 0
@@ -291,14 +294,6 @@ class BuildAgent:
             deactivated_count += result.get("deactivated", 0)
             link_count += result.get("links", 0)
 
-        # Apply decay
-        commit_hashes = [c.hash for c in commits]
-        reinforced = self._memories.get_ids_for_commits(commit_hashes)
-        last_build = self._build_meta.get_last()
-        accessed_since = last_build.built_at if last_build else ""
-        accessed = self._memories.get_ids_accessed_since(accessed_since) if accessed_since else set()
-        decayed = self._decay.apply(accessed_ids=accessed, reinforced_ids=reinforced)
-
         # Record build
         current_hash = commits[-1].hash if commits else self._git.get_current_hash()
         self._build_meta.record(BuildMetaEntry(
@@ -315,7 +310,6 @@ class BuildAgent:
             "updated_memories": updated_count,
             "deactivated_memories": deactivated_count,
             "new_links": link_count,
-            "decayed_memories": decayed,
         }
         if errors:
             result_dict["errors"] = errors
@@ -334,15 +328,23 @@ class BuildAgent:
         return max(chars // 4, 1)
 
     def _make_batches(self, commits: list[ParsedCommit],
-                      budget: int) -> list[list[ParsedCommit]]:
-        """Split commits into batches that fit within the given token budget."""
+                      budget: int,
+                      max_commits: int = 10) -> list[list[ParsedCommit]]:
+        """Split commits into batches.
+
+        Splits when either the token budget OR max commits per batch is hit.
+        A single oversized commit always gets its own batch (never dropped).
+        """
         batches: list[list[ParsedCommit]] = []
         current_batch: list[ParsedCommit] = []
         current_tokens = 0
 
         for commit in commits:
             tokens = self._estimate_commit_tokens(commit)
-            if current_batch and current_tokens + tokens > budget:
+            if current_batch and (
+                current_tokens + tokens > budget
+                or len(current_batch) >= max_commits
+            ):
                 batches.append(current_batch)
                 current_batch = []
                 current_tokens = 0
@@ -357,11 +359,11 @@ class BuildAgent:
                        *, max_output_tokens: int = 16_384) -> Optional[dict]:
         """Process a single batch of commits through the LLM.
 
-        Retries up to 3 times with exponential backoff for transient errors
-        (429 rate limit, 5xx server errors, timeouts).
+        Retries up to 5 times with exponential backoff for transient errors
+        (429 rate limit, 5xx server errors, timeouts, empty responses).
         """
-        # Refresh existing memories for context each batch
-        existing = self._memories.list_all(limit=200)
+        # Refresh existing memories for context each batch (no limit — send all)
+        existing = self._memories.list_all(limit=10_000)
         existing_summary = [
             {"id": m.id, "summary": m.summary, "type": m.type, "files": m.files}
             for m in existing
@@ -374,7 +376,7 @@ class BuildAgent:
             f"New commits to process:\n{commits_text}"
         )
 
-        max_retries = 3
+        max_retries = 5
         last_error = None
         for attempt in range(max_retries):
             try:
@@ -389,17 +391,18 @@ class BuildAgent:
                 break  # Success
             except Exception as e:
                 last_error = e
-                # Retry on transient HTTP errors and truncated JSON
+                # Retry on transient errors: empty content, truncated JSON,
+                # rate limits, server errors, network issues
                 is_transient = False
-                if isinstance(e, json.JSONDecodeError):
-                    is_transient = True  # LLM returned truncated output
+                if isinstance(e, (json.JSONDecodeError, ValueError)):
+                    is_transient = True
                 elif _is_http_transient(e):
                     is_transient = True
                 elif isinstance(e, (ConnectionError, TimeoutError, OSError)):
                     is_transient = True
 
                 if is_transient and attempt < max_retries - 1:
-                    wait = 2 ** (attempt + 1)  # 2s, 4s
+                    wait = 2 ** (attempt + 1)  # 2s, 4s, 8s, 16s
                     print(
                         f"    retry {attempt + 1}/{max_retries - 1} after {wait}s ({e})",
                         file=sys.stderr, flush=True,
@@ -416,9 +419,9 @@ class BuildAgent:
         deactivated_count = 0
         link_count = 0
 
-        # New memories
-        new_id_map: dict[int, int] = {}
-        for i, mem_data in enumerate(result.get("new_memories", [])):
+        # New memories — build key_map: string key → actual DB ID
+        key_map: dict[str, int] = {}
+        for mem_data in result.get("new_memories", []):
             memory = Memory(
                 summary=mem_data.get("summary", ""),
                 type=mem_data.get("type", "context"),
@@ -429,9 +432,22 @@ class BuildAgent:
                 tags=mem_data.get("tags", []),
             )
             created = self._memories.create(memory)
-            if created.id is not None:
-                new_id_map[i] = created.id
+            key = mem_data.get("key", "")
+            if created.id is not None and key:
+                key_map[key] = created.id
             new_count += 1
+
+        def _resolve_id(ref: object) -> Optional[int]:
+            """Resolve a link reference to an actual DB ID.
+
+            String refs → look up in key_map (new memories).
+            Integer refs → existing memory DB ID (passthrough).
+            """
+            if isinstance(ref, str):
+                return key_map.get(ref)
+            if isinstance(ref, (int, float)):
+                return int(ref)
+            return None
 
         # Update existing memories
         for update_data in result.get("update_memories", []):
@@ -455,16 +471,26 @@ class BuildAgent:
             self._memories.deactivate(mem_id)
             deactivated_count += 1
 
-        # Create links — remap IDs for newly created memories
+        # Create links — resolve string keys and integer IDs
         for link_data in result.get("new_links", []):
-            id_a = link_data.get("memory_id_a", 0)
-            id_b = link_data.get("memory_id_b", 0)
-
-            # Remap: if the LLM used array indices for new memories, map to real DB IDs
-            id_a = new_id_map.get(id_a, id_a)
-            id_b = new_id_map.get(id_b, id_b)
+            id_a = _resolve_id(link_data.get("source") or link_data.get("memory_id_a"))
+            id_b = _resolve_id(link_data.get("target") or link_data.get("memory_id_b"))
 
             if not id_a or not id_b:
+                ref_a = link_data.get("source") or link_data.get("memory_id_a")
+                ref_b = link_data.get("target") or link_data.get("memory_id_b")
+                print(
+                    f"    skip link {ref_a}↔{ref_b}: could not resolve",
+                    file=sys.stderr, flush=True,
+                )
+                continue
+
+            # Validate both memories exist before inserting
+            if self._memories.get(id_a) is None or self._memories.get(id_b) is None:
+                print(
+                    f"    skip link {id_a}↔{id_b}: memory not found",
+                    file=sys.stderr, flush=True,
+                )
                 continue
 
             link = MemoryLink(
@@ -481,6 +507,17 @@ class BuildAgent:
                     f"    skip link {id_a}↔{id_b}: {e}",
                     file=sys.stderr, flush=True,
                 )
+
+        # Auto-deactivate targets of 'supersedes' links
+        for link_data in result.get("new_links", []):
+            if link_data.get("relationship") == "supersedes":
+                target_ref = link_data.get("target") or link_data.get("memory_id_b")
+                target_id = _resolve_id(target_ref)
+                if target_id:
+                    mem = self._memories.get(target_id)
+                    if mem and mem.active:
+                        self._memories.deactivate(target_id)
+                        deactivated_count += 1
 
         return {
             "new": new_count,

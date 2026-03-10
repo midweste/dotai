@@ -6,6 +6,21 @@ from dataclasses import asdict
 from typing import Callable, Optional
 from urllib.parse import urlparse
 
+_CAVEAT = (
+    "\u26a0\ufe0f Memories are historical context extracted from git history"
+    " \u2014 always verify against current code before acting on them."
+)
+
+_SERVER_INSTRUCTIONS = """Project Memory \u2014 persistent knowledge extracted from git history.
+
+Before working on any area of the codebase, call `search_file_memory_by_path`
+with the file path or `search_project_memory_by_topic` with relevant terms.
+This surfaces past decisions, known bugs, debt, and conventions that are NOT
+visible in the code itself. Prevents repeating past mistakes and contradicting
+established decisions.
+
+Results are historical context \u2014 always verify against current code."""
+
 
 class McpServer:
     """MCP SDK server with tool registration and stdio transport.
@@ -59,24 +74,35 @@ class McpServer:
         """Start the MCP server over stdio."""
         from mcp.server.fastmcp import FastMCP, Context
 
-        mcp = FastMCP("project-memory")
+        mcp = FastMCP("project-memory", instructions=_SERVER_INSTRUCTIONS)
         server = self  # capture for closures
 
         @mcp.tool()
-        async def memory_debug_roots(ctx: Context) -> str:
-            """DEBUG: Check if the MCP client sends workspace roots."""
-            try:
-                result = await ctx.session.list_roots()
-                roots_data = [
-                    {"uri": str(r.uri), "name": r.name}
-                    for r in result.roots
-                ]
-                return json.dumps({"roots": roots_data, "count": len(roots_data)}, indent=2)
-            except Exception as e:
-                return json.dumps({"error": str(e), "type": type(e).__name__})
+        async def search_file_memory_by_path(
+            ctx: Context,
+            path: str,
+            min_importance: float = 0.0,
+            limit: int = 20,
+        ) -> str:
+            """Call before modifying a file. Returns past decisions, known bugs,
+            debt, and patterns associated with the file path. Supports exact
+            file paths and directory prefixes.
+
+            Results are historical context — always verify against current code.
+            """
+            c = await server._ensure_components(ctx)
+            memories = c["memory_store"].query_by_file(
+                path,
+                limit=limit,
+                min_importance=min_importance,
+            )
+            for m in memories:
+                c["memory_store"].touch(m.id)
+            result = [m.to_dict() for m in memories]
+            return json.dumps({"caveat": _CAVEAT, "memories": result}, indent=2)
 
         @mcp.tool()
-        async def memory_search(
+        async def search_project_memory_by_topic(
             ctx: Context,
             query: str,
             type: str = "",
@@ -84,10 +110,11 @@ class McpServer:
             min_importance: float = 0.0,
             limit: int = 20,
         ) -> str:
-            """Full-text search across memory summaries.
+            """Search project memory by topic. Returns decisions, conventions,
+            and patterns not visible in the code. Call when researching an area
+            or starting work on a feature.
 
-            Secondary retrieval method. All filters optional.
-            Returns matching memories sorted by FTS rank.
+            Results are historical context — always verify against current code.
             """
             c = await server._ensure_components(ctx)
             memories = c["memory_store"].search(
@@ -99,15 +126,17 @@ class McpServer:
             )
             for m in memories:
                 c["memory_store"].touch(m.id)
-            return json.dumps([m.to_dict() for m in memories], indent=2)
+            result = [m.to_dict() for m in memories]
+            return json.dumps({"caveat": _CAVEAT, "memories": result}, indent=2)
 
         @mcp.tool()
-        async def memory_get(
+        async def recall_memory(
             ctx: Context, memory_id: int, include_links: bool = True,
         ) -> str:
-            """Get a specific memory by ID with full detail.
+            """Retrieve a specific memory by ID with full detail and linked
+            memories. Use to drill into search results and see connections.
 
-            Includes all linked memories when include_links is True.
+            Results are historical context — always verify against current code.
             """
             c = await server._ensure_components(ctx)
             memory = c["memory_store"].get(memory_id)
@@ -127,14 +156,15 @@ class McpServer:
                     if c["memory_store"].get(lid)
                 ]
 
-            return json.dumps(result, indent=2)
+            return json.dumps({"caveat": _CAVEAT, "memory": result}, indent=2)
 
         @mcp.tool()
-        async def memory_stats(ctx: Context) -> str:
-            """Overview of the knowledge store.
-
-            Returns total count, counts by type/confidence, top files,
-            average importance, and last build info.
+        async def project_memory_overview(ctx: Context) -> str:
+            """Overview of project memory — total memory count, breakdown by
+            type (decision, pattern, convention, context, debt), breakdown by
+            confidence (high, medium, low), average importance score, top 10
+            most-referenced files, and last build info (date, commits processed,
+            memory count).
             """
             c = await server._ensure_components(ctx)
             stats = c["memory_store"].stats()
@@ -151,33 +181,20 @@ class McpServer:
             c = await server._ensure_components(ctx)
             return c["inspector"].inspect(query)
 
-        @mcp.tool()
-        async def memory_build(ctx: Context, limit: int = 0) -> str:
-            """Incremental build — process new commits since the last build.
-
-            Only processes commits not yet seen. Safe to call frequently.
-            Set limit to restrict the number of commits processed (0 = unlimited).
-            """
+        @mcp.prompt()
+        async def briefing(ctx: Context) -> list[dict]:
+            """Load key project context — top decisions, patterns, and conventions from project memory."""
             c = await server._ensure_components(ctx)
-            if not c.get("build_agent"):
-                return json.dumps({"error": "Build agent not available"})
-            result = c["build_agent"].build(limit=limit or None)
-            return json.dumps(result, indent=2)
-
-        @mcp.tool()
-        async def memory_rebuild(ctx: Context, limit: int = 0) -> str:
-            """Full rebuild — drop all memories and reprocess from git history.
-
-            Destructive: deletes all existing memories, links, and build metadata,
-            then reprocesses the entire git history. Use when schema has changed
-            or memories need regenerating with an updated build prompt.
-            Set limit to restrict the number of commits processed (0 = unlimited).
-            """
-            c = await server._ensure_components(ctx)
-            if not c.get("build_agent"):
-                return json.dumps({"error": "Build agent not available"})
-            result = c["build_agent"].rebuild(limit=limit or None)
-            return json.dumps(result, indent=2)
+            memories = c["memory_store"].list_all(limit=20)
+            if not memories:
+                return [{"role": "user", "content": "No project memories found. Run a build first."}]
+            lines = [f"- **[{m.type}]** (importance: {m.importance}) {m.summary}" for m in memories]
+            summary = "\n".join(lines)
+            return [{"role": "user", "content": (
+                f"## Project Memory Briefing\n\n"
+                f"{_CAVEAT}\n\n"
+                f"{summary}"
+            )}]
 
         mcp.run(transport="stdio")
 

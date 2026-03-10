@@ -54,9 +54,15 @@ class GitLogParser:
         since_hash: Optional[str] = None,
         limit: Optional[int] = None,
     ) -> str:
-        """Get git log with file stats only (lighter weight)."""
+        """Get git log with file stats only (lighter weight).
+
+        When limit is set, returns the newest N commits in chronological
+        order (git gives newest-first, we reverse).
+        """
         fmt = "commit %H%nAuthor: %an%nDate: %ai%n%n%B%n%(trailers)%n---END_COMMIT---"
-        args = ["log", "--stat", "--reverse", f"--format={fmt}"]
+        args = ["log", "--stat", f"--format={fmt}"]
+        if not limit:
+            args.insert(2, "--reverse")  # all commits: chronological order
         if since_hash:
             args.append(f"{since_hash}..HEAD")
         if limit:
