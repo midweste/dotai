@@ -455,17 +455,32 @@ class BuildAgent:
             self._memories.deactivate(mem_id)
             deactivated_count += 1
 
-        # Create links
+        # Create links — remap IDs for newly created memories
         for link_data in result.get("new_links", []):
+            id_a = link_data.get("memory_id_a", 0)
+            id_b = link_data.get("memory_id_b", 0)
+
+            # Remap: if the LLM used array indices for new memories, map to real DB IDs
+            id_a = new_id_map.get(id_a, id_a)
+            id_b = new_id_map.get(id_b, id_b)
+
+            if not id_a or not id_b:
+                continue
+
             link = MemoryLink(
-                memory_id_a=link_data.get("memory_id_a", 0),
-                memory_id_b=link_data.get("memory_id_b", 0),
+                memory_id_a=id_a,
+                memory_id_b=id_b,
                 relationship=link_data.get("relationship", "related_to"),
                 strength=link_data.get("strength", 0.5),
             )
-            if link.memory_id_a and link.memory_id_b:
+            try:
                 self._links.create(link)
                 link_count += 1
+            except Exception as e:
+                print(
+                    f"    skip link {id_a}↔{id_b}: {e}",
+                    file=sys.stderr, flush=True,
+                )
 
         return {
             "new": new_count,
