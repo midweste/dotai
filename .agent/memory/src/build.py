@@ -637,64 +637,67 @@ class BuildAgent:
     def _memory_from_dict(data: dict) -> Memory:
         """Convert a dict from LLM output into a Memory dataclass.
 
-        Confidence is computed mathematically from evidence signals (0-100 scale):
-          - source_commits: 1→10, 2→20, 3+→25              (max 25)
-          - files:          1→10, 2-3→15, 4+→25             (max 25)
-          - summary length: >50→5, >100→10, >200→20, >300→25 (max 25)
-          - tags:           1-2→5, 3-4→10, 5-6→15, 7+→25   (max 25)
-        Thresholds: 0-29 → low, 30-59 → medium, 60+ → high
+        Confidence is computed from evidence signals weighted by
+        discriminative value. Structural signals (commits, files) are
+        weighted higher because they reflect real breadth of change.
+        Cosmetic signals (summary length, tags) are weighted lower
+        because the LLM inflates them on every extraction.
+
+        Scoring (0-100):
+          - source_commits: 0→0, 1→8, 2→20, 3+→30     (max 30, structural)
+          - files:          0→0, 1→5, 2-3→15, 4-6→25, 7+→30 (max 30, structural)
+          - summary length: ≤100→0, ≤200→5, ≤300→12, 300+→20 (max 20, cosmetic)
+          - tags:           ≤2→0, 3-4→5, 5-6→12, 7+→20      (max 20, cosmetic)
+        Thresholds: 0-21 → low, 22-49 → medium, 50+ → high
         """
         source_commits = data.get("source_commits", [])
         files = data.get("files", [])
         summary = data.get("summary", "")
         tags = data.get("tags", [])
 
-        # Evidence scoring (0-100)
         score = 0
 
-        # Source commits (0-25)
+        # Source commits (0-30): rarest signal, most valuable
         n_commits = len(source_commits)
         if n_commits >= 3:
-            score += 25
+            score += 30
         elif n_commits == 2:
             score += 20
         elif n_commits == 1:
-            score += 10
+            score += 8
 
-        # Files referenced (0-25)
+        # Files referenced (0-30): structural, shows breadth of change
         n_files = len(files)
-        if n_files >= 4:
+        if n_files >= 7:
+            score += 30
+        elif n_files >= 4:
             score += 25
         elif n_files >= 2:
             score += 15
         elif n_files == 1:
-            score += 10
+            score += 5
 
-        # Summary length (0-25)
+        # Summary length (0-20): cosmetic, LLM always writes >100 chars
         s_len = len(summary)
         if s_len > 300:
-            score += 25
-        elif s_len > 200:
             score += 20
+        elif s_len > 200:
+            score += 12
         elif s_len > 100:
-            score += 10
-        elif s_len > 50:
             score += 5
 
-        # Tags (0-25)
+        # Tags (0-20): cosmetic, LLM always produces 4-5 tags
         n_tags = len(tags)
         if n_tags >= 7:
-            score += 25
+            score += 20
         elif n_tags >= 5:
-            score += 15
+            score += 12
         elif n_tags >= 3:
-            score += 10
-        elif n_tags >= 1:
             score += 5
 
-        if score >= 60:
+        if score >= 50:
             confidence = "high"
-        elif score >= 30:
+        elif score >= 22:
             confidence = "medium"
         else:
             confidence = "low"
