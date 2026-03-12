@@ -79,6 +79,10 @@ class GitLogParser:
             if not chunk:
                 continue
 
+            # Quick check: skip if there's no "commit " line in this chunk
+            if not any(line.startswith("commit ") for line in chunk.split("\n")):
+                continue
+
             commit = ParsedCommit()
 
             # Split into header/body and diff sections

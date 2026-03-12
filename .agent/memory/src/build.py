@@ -226,25 +226,28 @@ class BuildAgent:
             f"  pass 1: extracting memories from {len(batches)} batches (parallel)...",
             file=sys.stderr, flush=True,
         )
+
+        # Show batch summary upfront
+        for i, batch in enumerate(batches, 1):
+            est_tokens = sum(self._estimate_commit_tokens(c) for c in batch)
+            print(
+                f"    batch {i}/{len(batches)}: "
+                f"{len(batch)} commits, ~{est_tokens:,} tokens",
+                file=sys.stderr, flush=True,
+            )
+
         from concurrent.futures import ThreadPoolExecutor, as_completed
         import threading
         print_lock = threading.Lock()
 
         def _llm_extract(batch_num_batch):
-            """Run LLM call in thread — returns raw result dict, no DB writes."""
+            """Run LLM call in thread — returns (batch_num, result dict)."""
             batch_num, batch = batch_num_batch
-            est_tokens = sum(self._estimate_commit_tokens(c) for c in batch)
-            with print_lock:
-                print(
-                    f"    batch {batch_num}/{len(batches)} "
-                    f"({len(batch)} commits, ~{est_tokens} tokens)...",
-                    file=sys.stderr, flush=True,
-                )
 
             commits_text = self._format_commits(batch)
             user_msg = f"New commits to process:\n{commits_text}"
 
-            return self._llm_call_with_retries(
+            result = self._llm_call_with_retries(
                 self._llm,
                 [
                     {"role": "system", "content": BUILD_SYSTEM_PROMPT},
@@ -253,7 +256,10 @@ class BuildAgent:
                 max_tokens=max_output,
                 response_schema=EXTRACT_SCHEMA,
                 fallback_llm=self._reasoning_llm,
+                label=f"batch {batch_num}/{len(batches)}",
+                print_lock=print_lock,
             )
+            return batch_num, result
 
         # Fire all LLM calls concurrently
         llm_results: list[Optional[dict]] = []
@@ -263,7 +269,8 @@ class BuildAgent:
                 for i, batch in enumerate(batches, 1)
             ]
             for future in as_completed(futures):
-                llm_results.append(future.result())
+                _batch_num, result = future.result()
+                llm_results.append(result)
 
         # Save all extracted memories to DB (main thread, sequential)
         for result in llm_results:
@@ -294,13 +301,15 @@ class BuildAgent:
         elif synth_result and "error" in synth_result:
             errors.append(synth_result["error"])
 
-        # Record build
-        current_hash = commits[-1].hash if commits else self._git.get_current_hash()
+        # Record build — always use git rev-parse HEAD for reliability
+        # (the parser can produce phantom commits from trailing git output)
+        current_hash = self._git.get_current_hash()
+        active_count = self._memories.count()
         self._build_meta.record(BuildMetaEntry(
             build_type=build_type,
             last_commit=current_hash,
             commit_count=total,
-            memory_count=self._memories.count(),
+            memory_count=active_count,
         ))
 
         result_dict: dict = {
@@ -310,6 +319,7 @@ class BuildAgent:
             "updated_memories": updated_count,
             "deactivated_memories": deactivated_count,
             "new_links": link_count,
+            "total_active_memories": active_count,
         }
         if errors:
             result_dict["errors"] = errors
@@ -471,6 +481,8 @@ class BuildAgent:
         *, max_tokens: int, response_schema: dict,
         max_retries: int = 4,
         fallback_llm: Optional[LLMClient] = None,
+        label: str = "",
+        print_lock: Optional["threading.Lock"] = None,
     ) -> Optional[dict]:
         """Make an LLM call with retry logic. Returns parsed dict or error dict.
 
@@ -483,6 +495,8 @@ class BuildAgent:
                     messages,
                     max_tokens=max_tokens,
                     response_schema=response_schema,
+                    label=label,
+                    print_lock=print_lock,
                 )
                 return json.loads(response_text)
             except Exception as e:

@@ -16,7 +16,9 @@ class MockLLMClient:
 
     def chat(self, messages: list[dict], *, temperature: float = 0.2,
              max_tokens: int = 16384,
-             response_schema: dict | None = None) -> str:
+             response_schema: dict | None = None,
+             label: str = "",
+             print_lock: object | None = None) -> str:
         self.calls.append(messages)
         return json.dumps(self._response)
 

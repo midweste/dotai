@@ -132,7 +132,9 @@ class LLMClient:
 
     def chat(self, messages: list[dict], *, temperature: float = 0.2,
              max_tokens: int = 16384,
-             response_schema: Optional[dict] = None) -> str:
+             response_schema: Optional[dict] = None,
+             label: str = "",
+             print_lock: Optional[object] = None) -> str:
         """Send a chat completion request and return the response content.
 
         Args:
@@ -216,12 +218,17 @@ class LLMClient:
         completion_tokens = usage.get("completion_tokens", 0)
         cached = usage.get("prompt_tokens_details", {}).get("cached_tokens", 0)
         import sys
-        print(
-            f"    {elapsed:.1f}s | "
+        prefix = f"    {label}: " if label else "    "
+        stats_line = (
+            f"{prefix}{elapsed:.1f}s | "
             f"in: {prompt_tokens:,} (cached: {cached:,}) | "
-            f"out: {completion_tokens:,}",
-            file=sys.stderr, flush=True,
+            f"out: {completion_tokens:,}"
         )
+        if print_lock:
+            with print_lock:
+                print(stats_line, file=sys.stderr, flush=True)
+        else:
+            print(stats_line, file=sys.stderr, flush=True)
 
         content = data["choices"][0]["message"].get("content") or ""
         finish_reason = data["choices"][0].get("finish_reason", "unknown")
