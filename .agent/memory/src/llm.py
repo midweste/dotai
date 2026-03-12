@@ -135,6 +135,11 @@ class LLMClient:
             "response_format": {"type": "json_object"},
             # Ensure provider actually supports JSON mode
             "provider": {"require_parameters": True},
+            # Enable Anthropic prompt caching via OpenRouter.
+            # Automatically caches the system prompt prefix.
+            # Cache reads are 0.1x input price (90% savings).
+            # Claude Sonnet 4.6 minimum cacheable: 2048 tokens.
+            "cache_control": {"type": "ephemeral"},
         }
 
         response = requests.post(
@@ -144,8 +149,8 @@ class LLMClient:
                 "Content-Type": "application/json",
                 # Required by OpenRouter for app identification.
                 # Absence can cause empty responses.
-                "HTTP-Referer": "https://github.com/project-memory",
-                "X-Title": "Project Memory Build",
+                "HTTP-Referer": "http://localhost",
+                "X-Title": "project-memory",
             },
             json=payload,
             timeout=180,
