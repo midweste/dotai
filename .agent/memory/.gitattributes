@@ -1,4 +1,0 @@
-*.db binary
-*.db-shm binary
-*.db-wal binary
-*.db.bak binary

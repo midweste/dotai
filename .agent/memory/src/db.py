@@ -24,9 +24,10 @@ class Database:
         if self._conn is None:
             self._conn = sqlite3.connect(self.db_path)
             self._conn.row_factory = sqlite3.Row
-            # Performance tuning
-            self._conn.execute("PRAGMA journal_mode=WAL")
-            self._conn.execute("PRAGMA synchronous=NORMAL")  # Safe with WAL
+            # DELETE journal mode — no WAL/SHM files, DB is always
+            # a single clean file ready to commit to source control.
+            self._conn.execute("PRAGMA journal_mode=DELETE")
+            self._conn.execute("PRAGMA synchronous=FULL")
             self._conn.execute("PRAGMA cache_size=-64000")   # 64MB cache
             self._conn.execute("PRAGMA temp_store=MEMORY")
             self._conn.execute("PRAGMA mmap_size=268435456") # 256MB mmap
@@ -35,14 +36,14 @@ class Database:
 
     def close(self) -> None:
         if self._conn is not None:
-            # Checkpoint WAL to clean up -shm and -wal files on exit.
-            # TRUNCATE mode flushes WAL to the main DB and resets both files.
-            try:
-                self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-            except Exception:
-                pass  # Best-effort cleanup
             self._conn.close()
             self._conn = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
 
     def init_schema(self) -> None:
         """Create all tables, indexes, FTS5, and triggers if they don't exist."""

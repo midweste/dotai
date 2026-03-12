@@ -19,7 +19,7 @@ class Config:
 
     # Build batching
     MEMORY_COMMIT_LIMIT: int = 0          # 0 = all commits
-    MEMORY_BATCH_TOKEN_BUDGET: int = 5000
+    MEMORY_BATCH_TOKEN_BUDGET: int = 15000
     MEMORY_BATCH_MAX_COMMITS: int = 20
 
     # Model constraints

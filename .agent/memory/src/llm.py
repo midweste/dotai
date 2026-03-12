@@ -133,6 +133,8 @@ class LLMClient:
             "temperature": temperature,
             "max_tokens": max_tokens,
             "response_format": {"type": "json_object"},
+            # Ensure provider actually supports JSON mode
+            "provider": {"require_parameters": True},
         }
 
         response = requests.post(
@@ -140,11 +142,24 @@ class LLMClient:
             headers={
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
+                # Required by OpenRouter for app identification.
+                # Absence can cause empty responses.
+                "HTTP-Referer": "https://github.com/project-memory",
+                "X-Title": "Project Memory Build",
             },
             json=payload,
             timeout=180,
             stream=False,
         )
+
+        # Log diagnostics for non-200 responses before raise_for_status
+        if response.status_code != 200:
+            import sys
+            body_snippet = response.text[:200] if response.text else "(empty)"
+            print(
+                f"    API error {response.status_code}: {body_snippet}",
+                file=sys.stderr, flush=True,
+            )
         response.raise_for_status()
 
         # Log request + response for debugging
@@ -152,7 +167,7 @@ class LLMClient:
 
         raw_body = response.text.strip()
         if not raw_body:
-            raise ValueError("LLM returned empty response body")
+            raise ValueError("LLM returned empty response body (200 with no content)")
 
         data = json.loads(raw_body)
 

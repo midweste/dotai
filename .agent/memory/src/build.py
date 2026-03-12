@@ -148,13 +148,34 @@ class BuildAgent:
         self._llm = llm_client
 
     def build(self, *, limit: Optional[int] = None) -> dict:
-        """Full rebuild — drop DB and reprocess all git history.
+        """Incremental build — process commits since the last build.
 
-        Always does a complete rebuild: drops all tables and recreates the
-        schema for a clean start. Uses drop_all() instead of file deletion
-        so other processes (MCP server) with open connections see changes
-        immediately. Backs up the existing DB first. If the rebuild produces
-        zero memories (total failure), restores the backup.
+        Safe to interrupt (Ctrl+C): progress is recorded after each
+        successful build, so the next `build` resumes from where it
+        left off. If no previous build exists, processes all history.
+
+        Args:
+            limit: Max commits to process (newest first). Reads from
+                   MEMORY_COMMIT_LIMIT env var if not provided.
+                   0 or None = all new commits.
+        """
+        limit = limit or self._config.MEMORY_COMMIT_LIMIT or None
+
+        # Find where the last build left off
+        last_build = self._build_meta.get_last()
+        since_hash = last_build.last_commit if last_build and last_build.last_commit else None
+
+        return self._run_build(
+            since_hash=since_hash,
+            limit=limit,
+            build_type="incremental" if since_hash else "full",
+        )
+
+    def rebuild(self, *, limit: Optional[int] = None) -> dict:
+        """Full rebuild — drop all data and reprocess entire git history.
+
+        Backs up the existing DB first. If the rebuild produces zero
+        memories (total failure), restores the backup.
 
         Args:
             limit: Max commits to process (newest first). Reads from
@@ -172,11 +193,11 @@ class BuildAgent:
             # Backup existing DB before wiping
             shutil.copy2(db_path, backup_path)  # type: ignore[arg-type]
 
-        # Wipe all tables in-place (preserves file inode for other connections)
+        # Wipe all tables in-place
         self._db.drop_all()
         self._db.init_schema()
 
-        # Clear old build response logs — keep only current build's files
+        # Clear old build response logs
         responses_dir = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             "data", "build_responses",
@@ -196,11 +217,8 @@ class BuildAgent:
         # Restore backup if rebuild produced nothing
         if result.get("new_memories", 0) == 0 and backup_path and os.path.exists(backup_path):
             self._db.close()
-            # Replace the failed DB with backup
-            for suffix in ("", "-wal", "-shm"):
-                path = db_path + suffix
-                if os.path.exists(path):
-                    os.remove(path)
+            if os.path.exists(db_path):
+                os.remove(db_path)
             shutil.move(backup_path, db_path)
             self._db.__init__(db_path)  # type: ignore[misc]
             self._db.init_schema()
@@ -368,20 +386,26 @@ class BuildAgent:
             for m in existing
         ]
 
-        commits_text = self._format_commits(batch)
-        user_msg = (
-            f"Existing memories (for context, linking, and superseding):\n"
-            f"{json.dumps(existing_summary, indent=2)}\n\n"
-            f"New commits to process:\n{commits_text}"
-        )
+        # Build system prompt with existing memories appended.
+        # This keeps the large static prefix cacheable by LLM providers
+        # (Anthropic caches identical system prompt prefixes for 5 min).
+        system_msg = BUILD_SYSTEM_PROMPT
+        if existing_summary:
+            system_msg += (
+                "\n\nEXISTING MEMORIES (for context, linking, and superseding):\n"
+                + json.dumps(existing_summary, indent=2)
+            )
 
-        max_retries = 5
+        commits_text = self._format_commits(batch)
+        user_msg = f"New commits to process:\n{commits_text}"
+
+        max_retries = 4
         last_error = None
         for attempt in range(max_retries):
             try:
                 response_text = self._llm.chat(
                     [
-                        {"role": "system", "content": BUILD_SYSTEM_PROMPT},
+                        {"role": "system", "content": system_msg},
                         {"role": "user", "content": user_msg},
                     ],
                     max_tokens=max_output_tokens,
@@ -401,7 +425,7 @@ class BuildAgent:
                     is_transient = True
 
                 if is_transient and attempt < max_retries - 1:
-                    wait = 2 ** (attempt + 1)  # 2s, 4s, 8s, 16s
+                    wait = 1 + attempt  # 1s, 2s, 3s
                     print(
                         f"    retry {attempt + 1}/{max_retries - 1} after {wait}s ({e})",
                         file=sys.stderr, flush=True,

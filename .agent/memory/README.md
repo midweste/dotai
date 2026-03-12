@@ -7,11 +7,10 @@ Persistent, queryable project knowledge derived from git history. Gives AI codin
 ```bash
 cd .agent/memory
 
-# One-time setup — creates a local .venv and installs deps
-bash setup.sh
+# One-time setup — creates venv, installs deps, creates .env
+./scripts/install
 
 # Set your API key
-cp .env.example .env
 # Edit .env and paste your OpenRouter key (https://openrouter.ai/keys)
 
 # Build memories from recent commits (test run)
@@ -28,7 +27,7 @@ The script auto-activates its local `.venv` — no need to specify the venv pyth
 - Python 3.10+
 - `OPENROUTER_API_KEY` env var (for build mode)
 
-Everything else is handled by `setup.sh`.
+Everything else is handled by `scripts/install`.
 
 ## Usage
 
@@ -97,8 +96,8 @@ Confidence: high|medium|low
 ## Testing
 
 ```bash
-bash .agent/memory/setup.sh  # if not already done
 cd .agent/memory
+./scripts/install  # if not already done
 .venv/bin/pip install pytest
 .venv/bin/python -m pytest tests/ -v
 ```

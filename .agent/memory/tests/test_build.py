@@ -265,7 +265,7 @@ Confidence: high
         assert fetched.active is False
 
     def test_build_always_does_full_rebuild(self, components):
-        """Build should always drop and recreate (full rebuild)."""
+        """Rebuild should always drop and recreate (full rebuild)."""
         # First build creates a memory
         agent, _ = self._make_agent(components, {
             "new_memories": [
@@ -285,7 +285,7 @@ Confidence: high
         result = agent.build()
         assert result["new_memories"] == 1
 
-        # Second build (always rebuilds) — old memory should be gone
+        # Rebuild — old memory should be gone
         agent2, _ = self._make_agent(components, {
             "new_memories": [
                 {
@@ -301,7 +301,7 @@ Confidence: high
             "deactivate_memory_ids": [],
             "new_links": [],
         })
-        result2 = agent2.build()
+        result2 = agent2.rebuild()
         assert result2["status"] == "success"
         memories = components["memory_store"].list_all(active_only=False)
         # Only the new memory should exist

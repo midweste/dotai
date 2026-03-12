@@ -4,6 +4,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
-# Data directory — keep dir, ignore contents
+# Data directory — commit the DB, ignore runtime/transient files
 data/*
 !data/.gitkeep
+!data/*.db
