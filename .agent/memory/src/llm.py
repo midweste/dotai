@@ -106,16 +106,30 @@ class LLMClient:
             )
 
     @staticmethod
-    def _strip_json_fences(text: str) -> str:
-        """Strip markdown code fences if present (e.g. ```json ... ```)."""
+    def _extract_json(text: str) -> str:
+        """Extract JSON object from LLM response that may contain surrounding text.
+
+        Handles: pure JSON, ```json fences, dialog text before/after JSON.
+        """
         text = text.strip()
-        if text.startswith("```"):
-            # Remove opening fence (```json or ```)
-            first_newline = text.index("\n") if "\n" in text else len(text)
-            text = text[first_newline + 1:]
-        if text.endswith("```"):
-            text = text[:-3]
-        return text.strip()
+
+        # 1. Try parsing directly — pure JSON
+        if text.startswith("{"):
+            return text
+
+        # 2. Extract from markdown code fences (```json ... ``` or ``` ... ```)
+        import re
+        fence_match = re.search(r"```(?:json)?\s*\n(.*?)```", text, re.DOTALL)
+        if fence_match:
+            return fence_match.group(1).strip()
+
+        # 3. Last resort: find first { to last } — handles dialog-wrapped JSON
+        first_brace = text.find("{")
+        last_brace = text.rfind("}")
+        if first_brace != -1 and last_brace > first_brace:
+            return text[first_brace:last_brace + 1]
+
+        return text
 
     def chat(self, messages: list[dict], *, temperature: float = 0.2,
              max_tokens: int = 16384) -> str:
@@ -187,7 +201,7 @@ class LLMClient:
                 f"Reduce batch size or increase max_tokens."
             )
 
-        content = self._strip_json_fences(content)
+        content = self._extract_json(content)
 
         # Detect empty content (transient API issue)
         if not content.strip():
