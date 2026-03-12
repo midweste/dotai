@@ -227,15 +227,6 @@ class BuildAgent:
             file=sys.stderr, flush=True,
         )
 
-        # Show batch summary upfront
-        for i, batch in enumerate(batches, 1):
-            est_tokens = sum(self._estimate_commit_tokens(c) for c in batch)
-            print(
-                f"    batch {i}/{len(batches)}: "
-                f"{len(batch)} commits, ~{est_tokens:,} tokens",
-                file=sys.stderr, flush=True,
-            )
-
         from concurrent.futures import ThreadPoolExecutor, as_completed
         import threading
         print_lock = threading.Lock()
@@ -256,7 +247,7 @@ class BuildAgent:
                 max_tokens=max_output,
                 response_schema=EXTRACT_SCHEMA,
                 fallback_llm=self._reasoning_llm,
-                label=f"batch {batch_num}/{len(batches)}",
+                label=f"batch {batch_num}/{len(batches)} ({len(batch)} commits)",
                 print_lock=print_lock,
             )
             return batch_num, result
