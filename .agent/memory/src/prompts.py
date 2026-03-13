@@ -10,7 +10,7 @@ RULES:
 - Never infer beyond what the commit shows
 - Score importance 0.0-1.0 based on how much the memory would affect future development
 - When new info contradicts an existing memory, mark the old one for deactivation
-- For bare commits ("hotfix", "fix stuff"), derive what you can from the diff, confidence=low
+- For bare commits ("hotfix", "fix stuff"), derive what you can from the diff
 - Never fabricate — silence is better than fiction
 
 SUMMARY GUIDELINES:
@@ -27,7 +27,7 @@ TAGS:
 
 MEMORY TYPES: decision, pattern, convention, debt, bug_fix, context, refactor, fix, feature
 
-Note: Do NOT include a confidence field — confidence is computed automatically from commit data.
+
 
 CRITICAL: Your response MUST be a raw JSON object and NOTHING else.
 Do NOT wrap it in markdown code fences. Do NOT include any text before or after the JSON.

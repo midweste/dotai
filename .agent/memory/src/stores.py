@@ -202,11 +202,10 @@ class MemoryStore:
         ).fetchall():
             by_type[row["type"]] = row["c"]
 
-        by_confidence = {}
-        for row in c.execute(
-            "SELECT confidence, COUNT(*) as c FROM memories WHERE active = 1 GROUP BY confidence"
-        ).fetchall():
-            by_confidence[row["confidence"]] = row["c"]
+        confidence_stats = c.execute(
+            "SELECT AVG(confidence) as avg, MIN(confidence) as min, MAX(confidence) as max "
+            "FROM memories WHERE active = 1"
+        ).fetchone()
 
         avg_importance = c.execute(
             "SELECT AVG(importance) as a FROM memories WHERE active = 1"
@@ -223,7 +222,11 @@ class MemoryStore:
         return {
             "total_memories": total,
             "by_type": by_type,
-            "by_confidence": by_confidence,
+            "confidence": {
+                "avg": round(confidence_stats["avg"], 1) if confidence_stats["avg"] else 0,
+                "min": confidence_stats["min"] or 0,
+                "max": confidence_stats["max"] or 0,
+            },
             "avg_importance": round(avg_importance, 3) if avg_importance else 0.0,
             "top_files": dict(top_files_sorted),
         }

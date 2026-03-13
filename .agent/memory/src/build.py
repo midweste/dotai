@@ -252,7 +252,7 @@ class BuildAgent:
 
         print(
             f"  pass 1: extracting memories from {len(batches)} batches "
-            f"(workers: {rate_limiter.max_workers})",
+            f"(paced: {rate_limiter.rpm} RPM)",
             file=sys.stderr, flush=True,
         )
         if est_cost > 0:
@@ -300,9 +300,9 @@ class BuildAgent:
             )
             return batch_num, result
 
-        # Fire all LLM calls concurrently
+        # Fire all LLM calls concurrently — RateLimiter paces RPM
         llm_results: list[Optional[dict]] = []
-        with ThreadPoolExecutor(max_workers=min(len(batches), rate_limiter.max_workers)) as executor:
+        with ThreadPoolExecutor(max_workers=len(batches)) as executor:
             futures = [
                 executor.submit(_llm_extract, (i, batch))
                 for i, batch in enumerate(batches, 1)
@@ -648,7 +648,7 @@ class BuildAgent:
           - files:          0→0, 1→5, 2-3→15, 4-6→25, 7+→30 (max 30, structural)
           - summary length: ≤100→0, ≤200→5, ≤300→12, 300+→20 (max 20, cosmetic)
           - tags:           ≤2→0, 3-4→5, 5-6→12, 7+→20      (max 20, cosmetic)
-        Thresholds: 0-21 → low, 22-49 → medium, 50+ → high
+        The raw score (0-100) is stored as the confidence value.
         """
         source_commits = data.get("source_commits", [])
         files = data.get("files", [])
@@ -695,17 +695,10 @@ class BuildAgent:
         elif n_tags >= 3:
             score += 5
 
-        if score >= 50:
-            confidence = "high"
-        elif score >= 22:
-            confidence = "medium"
-        else:
-            confidence = "low"
-
         return Memory(
             summary=summary,
             type=data.get("type", "context"),
-            confidence=confidence,
+            confidence=score,
             importance=data.get("importance", 0.5),
             source_commits=source_commits,
             files=files,

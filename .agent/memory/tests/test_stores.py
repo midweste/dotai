@@ -13,7 +13,7 @@ class TestMemoryStore:
         mem = memory_store.create(Memory(
             summary="Test memory",
             type="decision",
-            confidence="high",
+            confidence=75,
             importance=0.8,
             files=["src/foo.py"],
         ))
@@ -21,7 +21,7 @@ class TestMemoryStore:
         fetched = memory_store.get(mem.id)
         assert fetched.summary == "Test memory"
         assert fetched.type == "decision"
-        assert fetched.confidence == "high"
+        assert fetched.confidence == 75
         assert fetched.importance == 0.8
         assert fetched.files == ["src/foo.py"]
         assert fetched.active is True
@@ -207,18 +207,20 @@ class TestMemoryStore:
     def test_stats(self, memory_store):
         """Should return aggregate statistics."""
         memory_store.create(Memory(
-            summary="A", type="decision", confidence="high", importance=0.8,
+            summary="A", type="decision", confidence=75, importance=0.8,
             files=["src/a.py"],
         ))
         memory_store.create(Memory(
-            summary="B", type="pattern", confidence="medium", importance=0.6,
+            summary="B", type="pattern", confidence=40, importance=0.6,
             files=["src/a.py", "src/b.py"],
         ))
         stats = memory_store.stats()
         assert stats["total_memories"] == 2
         assert stats["by_type"]["decision"] == 1
         assert stats["by_type"]["pattern"] == 1
-        assert stats["by_confidence"]["high"] == 1
+        assert stats["confidence"]["avg"] > 0
+        assert stats["confidence"]["min"] == 40
+        assert stats["confidence"]["max"] == 75
         assert stats["top_files"]["src/a.py"] == 2
 
     def test_get_nonexistent(self, memory_store):

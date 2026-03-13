@@ -160,9 +160,39 @@ class OpenRouterAPI:
 
     # -- Concurrency --
 
-    def create_rate_limiter(self, model_id: str, max_workers: int = 8) -> "RateLimiter":
-        """Create a RateLimiter tuned for this model."""
-        return RateLimiter(max_workers=max_workers)
+    def create_rate_limiter(self, model_id: str) -> "RateLimiter":
+        """Create a RateLimiter tuned for this model's actual rate limits.
+
+        Detection logic:
+          - Free models (pricing $0): 20 RPM (OpenRouter hard limit)
+          - Paid models with credits: ~$1 balance = 1 RPS, max 500 RPS
+          - Falls back to 20 RPM if detection fails
+        """
+        model_info = self.get_model_info(model_id)
+        key_info = self.get_key_info()
+        is_free_model = model_info.get("is_free", True)
+
+        if is_free_model:
+            # Free models: hard 20 RPM limit regardless of account tier
+            rpm = 20
+            reason = "free model"
+        else:
+            # Paid models: ~$1 balance = 1 RPS, max 500 RPS
+            balance = key_info.get("limit_remaining")
+            if balance is not None and balance > 0:
+                rps = min(balance, 500)
+                rpm = int(rps * 60)
+                reason = f"${balance:.2f} balance"
+            else:
+                # No balance info — conservative default
+                rpm = 20
+                reason = "unknown balance"
+
+        print(
+            f"  rate limit: {rpm} RPM ({reason})",
+            file=sys.stderr, flush=True,
+        )
+        return RateLimiter(rpm=rpm)
 
     # -- Cost Estimation --
 
@@ -177,41 +207,76 @@ class OpenRouterAPI:
             + output_tokens * pricing["completion"]
         )
 
-class RateLimiter:
-    """Adaptive rate limiter — blocks all threads when a 429 is received.
 
-    When any thread reports a 429:
-    1. All threads block on acquire() until the cooldown expires
-    2. Cooldown uses Retry-After header if available, else exponential backoff
-    3. After cooldown, all threads resume
+class RateLimiter:
+    """Sliding-window rate limiter with 429 emergency braking.
+
+    Two layers of protection:
+    1. Proactive pacing: acquire() enforces a sliding-window RPM limit,
+       sleeping until a slot opens rather than firing and getting rejected.
+    2. Reactive braking: on_rate_limit() closes the gate for all threads
+       when a 429 is received (safety net for miscalculated limits).
 
     Thread-safe. Designed for use with ThreadPoolExecutor.
     """
 
-    def __init__(self, max_workers: int = 8):
-        self._max_workers = max_workers
+    def __init__(self, rpm: int = 20):
+        self._rpm = rpm
+        # Sliding window: timestamps of recent request starts
+        self._window: list[float] = []
+        self._window_lock = threading.Lock()
+        # Emergency brake (429 handling)
         self._gate = threading.Event()
         self._gate.set()  # Start open
-        self._lock = threading.Lock()
+        self._brake_lock = threading.Lock()
         self._consecutive_429s = 0
         self._cooldown_until = 0.0
         self._total_429s = 0
 
     @property
-    def max_workers(self) -> int:
-        return self._max_workers
+    def rpm(self) -> int:
+        return self._rpm
 
     @property
     def total_429s(self) -> int:
         return self._total_429s
 
     def acquire(self) -> None:
-        """Call before each API request. Blocks if rate-limited."""
-        self._gate.wait()  # Blocks if gate is closed
+        """Call before each API request. Paces to stay within RPM.
+
+        Blocks if:
+        1. The sliding window is full (proactive pacing), OR
+        2. The emergency brake is engaged (429 received)
+        """
+        # Wait for emergency brake to release
+        self._gate.wait()
+
+        # Sliding-window pacing
+        while True:
+            now = time.monotonic()
+            with self._window_lock:
+                # Evict entries older than 60s
+                cutoff = now - 60.0
+                self._window = [t for t in self._window if t > cutoff]
+
+                if len(self._window) < self._rpm:
+                    # Slot available — record and proceed
+                    self._window.append(now)
+                    return
+
+                # Window full — calculate sleep until oldest entry expires
+                sleep_until = self._window[0] + 60.0
+
+            wait = sleep_until - now
+            if wait > 0:
+                time.sleep(wait + 0.05)  # small buffer to avoid edge-case ties
+
+            # Re-check emergency brake after sleeping
+            self._gate.wait()
 
     def on_success(self) -> None:
         """Call after a successful response."""
-        with self._lock:
+        with self._brake_lock:
             self._consecutive_429s = 0
 
     def on_rate_limit(self, retry_after: Optional[float] = None) -> None:
@@ -221,39 +286,45 @@ class RateLimiter:
             retry_after: Value from Retry-After header (seconds).
                          Falls back to exponential backoff if None.
         """
-        with self._lock:
+        with self._brake_lock:
             self._total_429s += 1
             self._consecutive_429s += 1
 
-            # Calculate cooldown
             if retry_after and retry_after > 0:
                 wait = retry_after
             else:
-                # Exponential backoff: 2, 4, 8, 16, 30 (capped)
                 wait = min(2 ** self._consecutive_429s, 30)
 
             target = time.monotonic() + wait
 
-            # Only extend cooldown, never shorten
             if target <= self._cooldown_until:
                 return  # Another thread already set a longer cooldown
 
             self._cooldown_until = target
-            self._gate.clear()  # Block all threads
+            self._gate.clear()
 
-            print(
-                f"      rate limited — pausing all workers for {wait:.0f}s "
-                f"(429 #{self._total_429s})",
-                file=sys.stderr, flush=True,
-            )
+            # Also reduce RPM to back off more aggressively
+            new_rpm = max(self._rpm // 2, 5)
+            if new_rpm < self._rpm:
+                self._rpm = new_rpm
+                print(
+                    f"      rate limited — reducing to {self._rpm} RPM, "
+                    f"pausing {wait:.0f}s (429 #{self._total_429s})",
+                    file=sys.stderr, flush=True,
+                )
+            else:
+                print(
+                    f"      rate limited — pausing all workers for {wait:.0f}s "
+                    f"(429 #{self._total_429s})",
+                    file=sys.stderr, flush=True,
+                )
 
-        # Start cooldown timer in background
         timer = threading.Timer(wait, self._release)
         timer.daemon = True
         timer.start()
 
     def _release(self) -> None:
         """Re-open the gate after cooldown."""
-        with self._lock:
+        with self._brake_lock:
             if time.monotonic() >= self._cooldown_until:
                 self._gate.set()

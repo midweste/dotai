@@ -53,7 +53,7 @@ class Database:
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
                 summary         TEXT NOT NULL,
                 type            TEXT NOT NULL,
-                confidence      TEXT NOT NULL,
+                confidence      INTEGER NOT NULL DEFAULT 0,
                 importance      REAL NOT NULL DEFAULT 0.5,
                 source_commits  TEXT NOT NULL DEFAULT '[]',
                 source_doc_refs TEXT NOT NULL DEFAULT '[]',

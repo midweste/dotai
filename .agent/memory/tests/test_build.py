@@ -29,8 +29,8 @@ class MockOpenRouterAPI(OpenRouterAPI):
     def validate_model(self, model_id: str) -> None:
         pass
 
-    def create_rate_limiter(self, model_id: str, max_workers: int = 8):
-        return RateLimiter(max_workers=max_workers)
+    def create_rate_limiter(self, model_id: str):
+        return RateLimiter(rpm=20)
 
     def estimate_cost(self, model_id: str, input_tokens: int, output_tokens: int = 0) -> float:
         return 0.0
@@ -129,7 +129,7 @@ Confidence: high
                     "key": "auth_jwt",
                     "summary": "Auth service uses JWT tokens",
                     "type": "decision",
-                    "confidence": "high",
+                    "confidence": 75,
                     "importance": 0.8,
                     "source_commits": ["aaa111"],
                     "files": ["src/auth.py"],
@@ -155,7 +155,7 @@ Confidence: high
                     "key": "placeholder",
                     "summary": "Placeholder",
                     "type": "context",
-                    "confidence": "medium",
+                    "confidence": 40,
                     "importance": 0.5,
                     "source_commits": ["aaa111"],
                     "files": [],
@@ -173,11 +173,11 @@ Confidence: high
         """Synthesis pass should create memory links."""
         # Pre-create two memories so the synthesis pass can link them
         m1 = Memory(
-            summary="Memory A", type="decision", confidence="high",
+            summary="Memory A", type="decision", confidence=75,
             importance=0.8, source_commits=["bbb222"], files=["src/a.py"],
         )
         m2 = Memory(
-            summary="Memory B", type="pattern", confidence="high",
+            summary="Memory B", type="pattern", confidence=75,
             importance=0.7, source_commits=["bbb222"], files=["src/b.py"],
         )
         m1 = components["memory_store"].create(m1)
@@ -224,7 +224,7 @@ Confidence: high
         # Create a memory to be deactivated
         old = Memory(
             summary="Will be deactivated", type="decision",
-            confidence="high", importance=0.8,
+            confidence=75, importance=0.8,
             source_commits=["bbb222"], files=[],
         )
         old = components["memory_store"].create(old)
@@ -364,7 +364,7 @@ Confidence: high
         """Supersedes links should auto-deactivate the target memory."""
         # Pre-create a memory that will be superseded
         old = Memory(
-            summary="Old approach", type="decision", confidence="high",
+            summary="Old approach", type="decision", confidence=75,
             importance=0.8, source_commits=["bbb222"], files=["src/old.py"],
         )
         old = components["memory_store"].create(old)

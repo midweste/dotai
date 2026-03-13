@@ -9,7 +9,7 @@ MEMORY_TYPES = frozenset({
     "refactor", "fix", "feature",
 })
 
-CONFIDENCE_LEVELS = frozenset({"high", "medium", "low"})
+
 
 RELATIONSHIP_TYPES = frozenset({
     "related_to", "supersedes", "caused_by", "resolved_by",
@@ -23,7 +23,7 @@ class Memory:
     id: Optional[int] = None
     summary: str = ""
     type: str = "context"
-    confidence: str = "medium"
+    confidence: int = 0
     importance: float = 0.5
     source_commits: list[str] = field(default_factory=list)
     source_doc_refs: list[str] = field(default_factory=list)

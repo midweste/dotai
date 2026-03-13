@@ -177,7 +177,7 @@ class McpServer:
         async def project_memory_overview(ctx: Context) -> str:
             """Overview of project memory — total memory count, breakdown by
             type (decision, pattern, convention, context, debt), breakdown by
-            confidence (high, medium, low), average importance score, top 10
+            confidence score (0-100), average importance score, top 10
             most-referenced files, and last build info (date, commits processed,
             memory count).
             """
