@@ -166,11 +166,13 @@ class BuildAgent:
     # Minimum output tokens to reserve for the response
     _MIN_OUTPUT_TOKENS = 4_000
 
-    def _compute_budget(self) -> tuple[int, int]:
-        """Compute (batch_budget, max_output_tokens) from model capabilities.
+    def _compute_budget(self) -> tuple[int, int, int]:
+        """Compute (batch_budget, max_output_tokens, truncation_limit).
 
-        Uses config batch_token_budget. Output tokens auto-tuned from model.
-        Budget is capped so input + output + overhead fits within context.
+        batch_budget: max input tokens per batch for the primary model.
+        max_output: output tokens to reserve.
+        truncation_limit: max input tokens before truncation is needed,
+            using the larger of primary/fallback model contexts.
         """
         info = self._llm.get_model_info()
         ctx = info["context_length"]
@@ -180,11 +182,22 @@ class BuildAgent:
         max_output = min(model_max_output, ctx // 3)
         max_output = max(max_output, self._MIN_OUTPUT_TOKENS)
 
-        # Input budget: never exceed what the model can actually handle
+        # Input budget for primary model
         max_input = ctx - max_output - self._OVERHEAD_TOKENS
         budget = min(self._config.MEMORY_BATCH_TOKEN_BUDGET, max_input)
 
-        return budget, max_output
+        # Truncation limit: use the largest model context available
+        max_ctx = ctx
+        if self._extract_fallback:
+            try:
+                fb_info = self._extract_fallback.get_model_info()
+                fb_ctx = fb_info["context_length"]
+                max_ctx = max(max_ctx, fb_ctx)
+            except Exception:
+                pass
+        truncation_limit = max_ctx - max_output - self._OVERHEAD_TOKENS
+
+        return budget, max_output, truncation_limit
 
     def _run_build(
         self,
@@ -201,7 +214,7 @@ class BuildAgent:
         """
         # Validate model and compute dynamic budget
         self._llm.validate_model()
-        token_budget, max_output = self._compute_budget()
+        token_budget, max_output, truncation_limit = self._compute_budget()
         info = self._llm.get_model_info()
         print(
             f"  extract model: {info['name']} "
@@ -249,7 +262,8 @@ class BuildAgent:
 
         # Split into batches by token budget + commit count limit
         max_commits = self._config.MEMORY_BATCH_MAX_COMMITS
-        batches = self._make_batches(commits, token_budget, max_commits)
+        batches = self._make_batches(commits, token_budget, max_commits,
+                                      truncation_limit=truncation_limit)
         total = len(commits)
         new_count = 0
         errors: list[str] = []
@@ -302,19 +316,37 @@ class BuildAgent:
             commits_text = self._format_commits(batch)
             user_msg = f"New commits to process:\n{commits_text}"
 
-            result = self._llm_call_with_retries(
-                self._llm,
-                [
-                    {"role": "system", "content": BUILD_SYSTEM_PROMPT},
-                    {"role": "user", "content": user_msg},
-                ],
-                max_tokens=max_output,
-                response_schema=EXTRACT_SCHEMA,
-                fallback_llm=self._extract_fallback,
-                label=f"batch {batch_num}/{len(batches)} ({len(batch)} commits)",
-                print_lock=print_lock,
-                rate_limiter=rate_limiter,
-            )
+            # Check if this batch exceeds primary model — route to fallback
+            batch_tokens = sum(self._estimate_commit_tokens(c) for c in batch)
+            if batch_tokens > token_budget and self._extract_fallback:
+                # Too big for primary, send directly to fallback (full diff)
+                result = self._llm_call_with_retries(
+                    self._extract_fallback,
+                    [
+                        {"role": "system", "content": BUILD_SYSTEM_PROMPT},
+                        {"role": "user", "content": user_msg},
+                    ],
+                    max_tokens=max_output,
+                    response_schema=EXTRACT_SCHEMA,
+                    fallback_llm=None,
+                    label=f"batch {batch_num}/{len(batches)} ({len(batch)} commits) [fallback]",
+                    print_lock=print_lock,
+                    rate_limiter=rate_limiter,
+                )
+            else:
+                result = self._llm_call_with_retries(
+                    self._llm,
+                    [
+                        {"role": "system", "content": BUILD_SYSTEM_PROMPT},
+                        {"role": "user", "content": user_msg},
+                    ],
+                    max_tokens=max_output,
+                    response_schema=EXTRACT_SCHEMA,
+                    fallback_llm=self._extract_fallback,
+                    label=f"batch {batch_num}/{len(batches)} ({len(batch)} commits)",
+                    print_lock=print_lock,
+                    rate_limiter=rate_limiter,
+                )
             return batch_num, result
 
         # Workers capped at RPM — more threads just pile up on the pacer lock
@@ -397,7 +429,8 @@ class BuildAgent:
 
     def _make_batches(self, commits: list[ParsedCommit],
                       budget: int,
-                      max_commits: int = 10) -> list[list[ParsedCommit]]:
+                      max_commits: int = 10,
+                      truncation_limit: int = 0) -> list[list[ParsedCommit]]:
         """Split commits into batches.
 
         Splits when either the token budget OR max commits per batch is hit.
@@ -418,7 +451,9 @@ class BuildAgent:
                     current_batch = []
                     current_tokens = 0
 
-                sub_commits = self._split_oversized_commit(commit, budget)
+                sub_commits = self._split_oversized_commit(
+                    commit, budget, truncation_limit=truncation_limit,
+                )
                 for sc in sub_commits:
                     batches.append([sc])
                 continue
@@ -439,7 +474,8 @@ class BuildAgent:
 
     @staticmethod
     def _split_oversized_commit(commit: ParsedCommit,
-                                budget: int) -> list[ParsedCommit]:
+                                budget: int,
+                                truncation_limit: int = 0) -> list[ParsedCommit]:
         """Split a commit that exceeds the token budget into smaller sub-commits.
 
         Strategy: split by files. Each sub-commit gets the same commit
@@ -487,9 +523,10 @@ class BuildAgent:
             file_diff = diff_by_file.get(f, "")
             file_chars = len(f) + len(file_diff) + 2
 
-            # Truncate individual file diffs that exceed the budget
-            if file_chars > available_chars:
-                max_diff_chars = available_chars - len(f) - 100
+            # Only truncate if diff exceeds the max model context (last resort)
+            trunc_chars = (truncation_limit or budget) * 4
+            if file_chars > trunc_chars:
+                max_diff_chars = trunc_chars - len(f) - 100
                 if max_diff_chars > 0 and file_diff:
                     file_diff = file_diff[:max_diff_chars] + "\n... [diff truncated]"
                     file_chars = len(f) + len(file_diff) + 2
