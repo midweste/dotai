@@ -27,11 +27,11 @@ class GitLogParser:
         """Run a git command and return stdout."""
         result = subprocess.run(
             ["git", *args],
-            capture_output=True, text=True, cwd=self.repo_path,
+            capture_output=True, cwd=self.repo_path,
         )
         if result.returncode != 0:
-            raise RuntimeError(f"git command failed: {result.stderr.strip()}")
-        return result.stdout
+            raise RuntimeError(f"git command failed: {result.stderr.decode(errors='replace').strip()}")
+        return result.stdout.decode(errors="replace")
 
     def get_log(
         self,
