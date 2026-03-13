@@ -222,7 +222,19 @@ class BuildAgent:
         )
 
         # Get commits
-        raw_log = self._git.get_file_list(since_hash=since_hash, limit=limit)
+        try:
+            raw_log = self._git.get_file_list(since_hash=since_hash, limit=limit)
+        except RuntimeError as e:
+            if "Invalid revision range" in str(e) and since_hash:
+                print(
+                    f"  warning: last_commit {since_hash[:12]} not found in repo, "
+                    f"falling back to full scan",
+                    file=sys.stderr, flush=True,
+                )
+                since_hash = None
+                raw_log = self._git.get_file_list(since_hash=None, limit=limit)
+            else:
+                raise
         commits = self._git.parse(raw_log)
         if limit:
             commits.reverse()  # git returned newest-first, we want chronological
