@@ -1,5 +1,8 @@
 """OpenRouter API client — model info, pricing, rate limits, and validation."""
 
+import fcntl
+import json
+import pathlib
 import sys
 import threading
 import time
@@ -209,25 +212,33 @@ class OpenRouterAPI:
 
 
 class RateLimiter:
-    """Sliding-window rate limiter with 429 emergency braking.
+    """Cross-process sliding-window rate limiter with 429 emergency braking.
+
+    Uses a shared JSON file with fcntl.flock for atomic access across
+    multiple concurrent build processes. All projects sharing the same
+    source code (via symlinks) automatically coordinate through the
+    same lock file in data/.
 
     Two layers of protection:
-    1. Proactive pacing: acquire() enforces a sliding-window RPM limit,
-       sleeping until a slot opens rather than firing and getting rejected.
-    2. Reactive braking: on_rate_limit() closes the gate for all threads
-       when a 429 is received (safety net for miscalculated limits).
+    1. Proactive pacing: acquire() checks a shared sliding window and
+       sleeps until a slot opens rather than firing and getting rejected.
+    2. Reactive braking: on_rate_limit() writes a cooldown timestamp to
+       the shared file, blocking all processes until it expires.
 
-    Thread-safe. Designed for use with ThreadPoolExecutor.
+    Thread-safe (threading.Lock) + process-safe (fcntl.flock).
     """
 
     def __init__(self, rpm: int = 20):
         self._rpm = rpm
-        # Sliding window: timestamps of recent request starts
-        self._window: list[float] = []
-        self._window_lock = threading.Lock()
-        # Emergency brake (429 handling)
+        # Shared file in the source data/ dir (follows symlinks = global)
+        self._state_file = str(
+            pathlib.Path(__file__).resolve().parent.parent / "data" / "rate_limit.json"
+        )
+        # Thread-level lock (within this process)
+        self._thread_lock = threading.Lock()
+        # Emergency brake for threads in this process
         self._gate = threading.Event()
-        self._gate.set()  # Start open
+        self._gate.set()
         self._brake_lock = threading.Lock()
         self._consecutive_429s = 0
         self._cooldown_until = 0.0
@@ -241,37 +252,75 @@ class RateLimiter:
     def total_429s(self) -> int:
         return self._total_429s
 
+    def _read_state(self, f) -> dict:
+        """Read state from locked file."""
+        f.seek(0)
+        try:
+            return json.loads(f.read() or "{}")
+        except (json.JSONDecodeError, ValueError):
+            return {}
+
+    def _write_state(self, f, state: dict) -> None:
+        """Write state to locked file."""
+        f.seek(0)
+        f.truncate()
+        f.write(json.dumps(state))
+        f.flush()
+
     def acquire(self) -> None:
         """Call before each API request. Paces to stay within RPM.
 
-        Blocks if:
-        1. The sliding window is full (proactive pacing), OR
-        2. The emergency brake is engaged (429 received)
+        Coordinates across both threads (threading.Lock) and
+        processes (fcntl.flock) using wall-clock timestamps.
         """
-        # Wait for emergency brake to release
+        # Wait for local emergency brake
         self._gate.wait()
 
-        # Sliding-window pacing
         while True:
-            now = time.monotonic()
-            with self._window_lock:
-                # Evict entries older than 60s
-                cutoff = now - 60.0
-                self._window = [t for t in self._window if t > cutoff]
+            now = time.time()
 
-                if len(self._window) < self._rpm:
-                    # Slot available — record and proceed
-                    self._window.append(now)
-                    return
+            with self._thread_lock:
+                try:
+                    with open(self._state_file, "r+") as f:
+                        fcntl.flock(f, fcntl.LOCK_EX)
+                        try:
+                            state = self._read_state(f)
 
-                # Window full — calculate sleep until oldest entry expires
-                sleep_until = self._window[0] + 60.0
+                            # Check cross-process cooldown
+                            cooldown = state.get("cooldown_until", 0)
+                            if cooldown > now:
+                                wait = cooldown - now
+                                fcntl.flock(f, fcntl.LOCK_UN)
+                                time.sleep(wait + 0.1)
+                                continue
+
+                            # Sliding window — evict entries older than 60s
+                            window = [t for t in state.get("window", [])
+                                      if t > now - 60.0]
+
+                            if len(window) < self._rpm:
+                                window.append(now)
+                                state["window"] = window
+                                self._write_state(f, state)
+                                return  # Slot acquired
+
+                            # Full — calculate wait
+                            sleep_until = window[0] + 60.0
+                        finally:
+                            fcntl.flock(f, fcntl.LOCK_UN)
+                except FileNotFoundError:
+                    # First use — create the file and retry
+                    pathlib.Path(self._state_file).parent.mkdir(
+                        parents=True, exist_ok=True,
+                    )
+                    with open(self._state_file, "w") as f:
+                        f.write("{}")
+                    continue
 
             wait = sleep_until - now
             if wait > 0:
-                time.sleep(wait + 0.05)  # small buffer to avoid edge-case ties
+                time.sleep(wait + 0.05)
 
-            # Re-check emergency brake after sleeping
             self._gate.wait()
 
     def on_success(self) -> None:
@@ -280,11 +329,9 @@ class RateLimiter:
             self._consecutive_429s = 0
 
     def on_rate_limit(self, retry_after: Optional[float] = None) -> None:
-        """Call when a 429 is received. Closes the gate for all threads.
+        """Call when a 429 is received. Writes cooldown to shared file.
 
-        Args:
-            retry_after: Value from Retry-After header (seconds).
-                         Falls back to exponential backoff if None.
+        All processes and threads will block until cooldown expires.
         """
         with self._brake_lock:
             self._total_429s += 1
@@ -295,29 +342,36 @@ class RateLimiter:
             else:
                 wait = min(2 ** self._consecutive_429s, 30)
 
-            target = time.monotonic() + wait
+            cooldown_until = time.time() + wait
 
-            if target <= self._cooldown_until:
-                return  # Another thread already set a longer cooldown
+            # Write cooldown to shared file so other processes see it
+            try:
+                with open(self._state_file, "r+") as f:
+                    fcntl.flock(f, fcntl.LOCK_EX)
+                    try:
+                        state = self._read_state(f)
+                        # Only extend cooldown, never shorten
+                        if cooldown_until > state.get("cooldown_until", 0):
+                            state["cooldown_until"] = cooldown_until
+                            # Also halve RPM in shared state
+                            current_rpm = state.get("rpm", self._rpm)
+                            new_rpm = max(current_rpm // 2, 5)
+                            state["rpm"] = new_rpm
+                            self._rpm = new_rpm
+                            self._write_state(f, state)
+                    finally:
+                        fcntl.flock(f, fcntl.LOCK_UN)
+            except FileNotFoundError:
+                pass
 
-            self._cooldown_until = target
+            self._cooldown_until = cooldown_until
             self._gate.clear()
 
-            # Also reduce RPM to back off more aggressively
-            new_rpm = max(self._rpm // 2, 5)
-            if new_rpm < self._rpm:
-                self._rpm = new_rpm
-                print(
-                    f"      rate limited — reducing to {self._rpm} RPM, "
-                    f"pausing {wait:.0f}s (429 #{self._total_429s})",
-                    file=sys.stderr, flush=True,
-                )
-            else:
-                print(
-                    f"      rate limited — pausing all workers for {wait:.0f}s "
-                    f"(429 #{self._total_429s})",
-                    file=sys.stderr, flush=True,
-                )
+            print(
+                f"      rate limited — pausing {wait:.0f}s, "
+                f"RPM → {self._rpm} (429 #{self._total_429s})",
+                file=sys.stderr, flush=True,
+            )
 
         timer = threading.Timer(wait, self._release)
         timer.daemon = True
@@ -326,5 +380,5 @@ class RateLimiter:
     def _release(self) -> None:
         """Re-open the gate after cooldown."""
         with self._brake_lock:
-            if time.monotonic() >= self._cooldown_until:
+            if time.time() >= self._cooldown_until:
                 self._gate.set()
