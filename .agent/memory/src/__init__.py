@@ -1,11 +1,30 @@
 """Project Memory System — persistent, queryable project knowledge derived from git history."""
 
 from pathlib import Path as _Path
+import subprocess as _subprocess
 
-# Single source of truth: project root derived from package location.
-# The memory system lives at {project_root}/.agent/memory/src/
-#   src/ → memory/ → .agent/ → project_root
-PROJECT_ROOT = str(_Path(__file__).resolve().parent.parent.parent.parent)
+
+def _detect_project_root() -> str:
+    """Detect project root from git, not from file path.
+
+    Using __file__.resolve() follows symlinks back to the source repo,
+    which breaks when the memory system is shared across projects via
+    symlinks. git rev-parse always returns the actual repo root.
+    """
+    try:
+        result = _subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception:
+        pass
+    # Fallback: derive from file path (works when not symlinked)
+    return str(_Path(__file__).resolve().parent.parent.parent.parent)
+
+
+PROJECT_ROOT = _detect_project_root()
 
 from src.models import Memory, MemoryLink, BuildMetaEntry, ParsedCommit
 from src.models import MEMORY_TYPES, RELATIONSHIP_TYPES
